@@ -36,13 +36,18 @@ module.exports = {
       directory: path.join(__dirname, 'public')
     },
     port: 3000,
+    host: 'localhost',
+    hot: true,
     proxy: {
       '/api': {
         target: 'http://localhost:5000',
         changeOrigin: true
       }
     },
-    historyApiFallback: true
+    historyApiFallback: true,
+    client: {
+      overlay: true,
+    }
   },
   resolve: {
     extensions: ['.js', '.jsx']

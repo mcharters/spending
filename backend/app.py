@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, send_from_directory
-from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import os
+from models import db, Expense
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)
@@ -11,10 +11,7 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'database.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db = SQLAlchemy(app)
-
-# Import models after db is created
-from models import Expense
+db.init_app(app)
 
 # Create tables
 with app.app_context():
