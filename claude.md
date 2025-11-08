@@ -50,12 +50,22 @@ spending/
 
 ## Current Data Model
 
+### Category Model (backend/models.py)
+- `id` (Integer, PK): Auto-incrementing primary key
+- `name` (String(50), Unique): Category name
+- `parent_type` (String(20)): Parent category type ("Personal" or "Shared")
+
+**Available Categories:**
+- Personal: Beauty, Clothing, Counselling, Entertainment, Media, Misc, Workouts
+- Shared: Car, Dining, Groceries, House, Kids, Outings, Utilities
+
 ### Expense Model (backend/models.py)
 - `id` (Integer, PK): Auto-incrementing primary key
 - `description` (String(200)): Expense description
 - `amount` (Float): Expense amount in currency
-- `category` (String(50)): Expense category (e.g., "Food", "Transport")
+- `category_id` (Integer, FK): Foreign key to Category model
 - `created_at` (DateTime): Timestamp, auto-set to UTC now
+- `category` (Relationship): SQLAlchemy relationship to Category
 
 ## API Endpoints
 
@@ -83,7 +93,7 @@ Creates a new expense.
 {
   "description": "Coffee",
   "amount": 4.50,
-  "category": "Food"
+  "category_id": 9
 }
 ```
 
@@ -93,9 +103,30 @@ Creates a new expense.
   "id": 2,
   "description": "Coffee",
   "amount": 4.50,
-  "category": "Food",
+  "category": "Dining",
+  "category_id": 9,
+  "parent_type": "Shared",
   "created_at": "2025-01-15T14:20:00"
 }
+```
+
+### GET /api/categories
+Returns all categories as JSON array.
+
+**Response**: `200 OK`
+```json
+[
+  {
+    "id": 1,
+    "name": "Beauty",
+    "parent_type": "Personal"
+  },
+  {
+    "id": 8,
+    "name": "Car",
+    "parent_type": "Shared"
+  }
+]
 ```
 
 ## Development Workflow
@@ -129,6 +160,47 @@ cd backend
 python app.py  # Everything served from http://localhost:5000
 ```
 
+## Database Migrations
+
+This project uses Flask-Migrate (Alembic) for database schema management.
+
+### Common Migration Commands
+
+```bash
+cd backend
+export FLASK_APP=app.py  # Mac/Linux
+set FLASK_APP=app.py     # Windows
+
+# Create a new migration after model changes
+flask db migrate -m "Description of changes"
+
+# Apply migrations to database
+flask db upgrade
+
+# Rollback last migration
+flask db downgrade
+
+# Seed categories (run after initial migration)
+flask seed-categories
+```
+
+### Migration Workflow
+
+1. **Make changes to models** in `backend/models.py`
+2. **Generate migration**: `flask db migrate -m "Add new field"`
+3. **Review migration** in `backend/migrations/versions/`
+4. **Apply migration**: `flask db upgrade`
+5. **Commit migration files** to git
+
+### Initial Setup (Fresh Database)
+
+```bash
+cd backend
+flask db upgrade          # Apply all migrations
+flask seed-categories     # Seed initial categories
+python app.py            # Start server
+```
+
 ## Coding Conventions
 
 ### Python (Backend)
@@ -146,8 +218,9 @@ python app.py  # Everything served from http://localhost:5000
 - CSS in separate files, imported in JS
 
 ### Database
-- Migrations: Currently using `db.create_all()` (consider Flask-Migrate for production)
+- Migrations: Using Flask-Migrate (Alembic) for schema versioning
 - Database file is gitignored and created automatically
+- Migration files in `backend/migrations/` should be committed to git
 - Use SQLAlchemy ORM, avoid raw SQL queries
 
 ## Common Tasks
@@ -155,8 +228,10 @@ python app.py  # Everything served from http://localhost:5000
 ### Adding a New Database Model
 1. Define model class in `backend/models.py` inheriting from `db.Model`
 2. Add `to_dict()` method for JSON serialization
-3. Import in `backend/app.py` before `db.create_all()`
-4. Restart Flask server to create tables
+3. Generate migration: `flask db migrate -m "Add NewModel"`
+4. Review migration file in `backend/migrations/versions/`
+5. Apply migration: `flask db upgrade`
+6. Restart Flask server
 
 ### Adding a New API Endpoint
 1. Add route decorator and function in `backend/app.py`

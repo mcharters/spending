@@ -1,7 +1,8 @@
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
+from flask_migrate import Migrate
 import os
-from models import db, Expense
+from models import db, Expense, Category
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)
@@ -12,10 +13,42 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'da
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
+migrate = Migrate(app, db)
 
-# Create tables
-with app.app_context():
-    db.create_all()
+# Seed categories function (call after running migrations)
+def seed_categories():
+    """Seed initial categories. Run with: flask seed-categories"""
+    categories = [
+        # Personal categories
+        Category(name='Beauty', parent_type='Personal'),
+        Category(name='Clothing', parent_type='Personal'),
+        Category(name='Counselling', parent_type='Personal'),
+        Category(name='Entertainment', parent_type='Personal'),
+        Category(name='Media', parent_type='Personal'),
+        Category(name='Misc', parent_type='Personal'),
+        Category(name='Workouts', parent_type='Personal'),
+
+        # Shared categories
+        Category(name='Car', parent_type='Shared'),
+        Category(name='Dining', parent_type='Shared'),
+        Category(name='Groceries', parent_type='Shared'),
+        Category(name='House', parent_type='Shared'),
+        Category(name='Kids', parent_type='Shared'),
+        Category(name='Outings', parent_type='Shared'),
+        Category(name='Utilities', parent_type='Shared'),
+    ]
+    db.session.add_all(categories)
+    db.session.commit()
+    print(f"Seeded {len(categories)} categories")
+
+@app.cli.command('seed-categories')
+def seed_categories_command():
+    """Seed the database with initial categories."""
+    with app.app_context():
+        if Category.query.count() == 0:
+            seed_categories()
+        else:
+            print("Categories already exist, skipping seed")
 
 # API Routes
 @app.route('/api/expenses', methods=['GET'])
@@ -30,11 +63,16 @@ def create_expense():
     expense = Expense(
         description=data.get('description'),
         amount=data.get('amount'),
-        category=data.get('category')
+        category_id=data.get('category_id')
     )
     db.session.add(expense)
     db.session.commit()
     return jsonify(expense.to_dict()), 201
+
+@app.route('/api/categories', methods=['GET'])
+def get_categories():
+    categories = Category.query.all()
+    return jsonify([category.to_dict() for category in categories])
 
 # Serve React App
 @app.route('/', defaults={'path': ''})

@@ -2,16 +2,18 @@ import React, { useState, useEffect } from 'react';
 
 function App() {
   const [expenses, setExpenses] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [formData, setFormData] = useState({
     description: '',
     amount: '',
-    category: ''
+    category_id: ''
   });
 
   const API_URL = process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:5000/api';
 
   useEffect(() => {
     fetchExpenses();
+    fetchCategories();
   }, []);
 
   const fetchExpenses = async () => {
@@ -21,6 +23,16 @@ function App() {
       setExpenses(data);
     } catch (error) {
       console.error('Error fetching expenses:', error);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch(`${API_URL}/categories`);
+      const data = await response.json();
+      setCategories(data);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
     }
   };
 
@@ -39,7 +51,7 @@ function App() {
       });
 
       if (response.ok) {
-        setFormData({ description: '', amount: '', category: '' });
+        setFormData({ description: '', amount: '', category_id: '' });
         fetchExpenses();
       }
     } catch (error) {
@@ -80,14 +92,32 @@ function App() {
             onChange={handleChange}
             required
           />
-          <input
-            type="text"
-            name="category"
-            placeholder="Category"
-            value={formData.category}
+          <select
+            name="category_id"
+            value={formData.category_id}
             onChange={handleChange}
             required
-          />
+          >
+            <option value="">Select a category...</option>
+            <optgroup label="Personal">
+              {categories
+                .filter(cat => cat.parent_type === 'Personal')
+                .map(cat => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+            </optgroup>
+            <optgroup label="Shared">
+              {categories
+                .filter(cat => cat.parent_type === 'Shared')
+                .map(cat => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+            </optgroup>
+          </select>
           <button type="submit">Add Expense</button>
         </form>
       </div>
