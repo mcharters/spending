@@ -205,11 +205,13 @@ npm install <package>
 ## Environment Setup
 
 ### Python Virtual Environment
-Always use a virtual environment:
+Always use a virtual environment in the backend directory:
 ```bash
+cd backend
 python -m venv venv
 venv\Scripts\activate  # Windows
 source venv/bin/activate  # Mac/Linux
+pip install -r requirements.txt
 ```
 
 ### Node Version
