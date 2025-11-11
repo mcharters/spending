@@ -11,7 +11,7 @@ from models import db, Expense, Category
 load_dotenv()
 
 app = Flask(__name__, static_folder='static', static_url_path='')
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*", "allow_headers": ["Content-Type", "Authorization"]}})
 auth = HTTPBasicAuth()
 
 # Database configuration

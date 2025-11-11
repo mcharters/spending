@@ -10,19 +10,37 @@ function App() {
     category_id: '',
     expense_date: new Date()
   });
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [credentials, setCredentials] = useState({ username: '', password: '' });
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [loginError, setLoginError] = useState('');
 
   const API_URL = process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:5000/api';
 
+  // Create Basic Auth header
+  const getAuthHeader = () => {
+    const token = btoa(`${credentials.username}:${credentials.password}`);
+    return { 'Authorization': `Basic ${token}` };
+  };
+
   useEffect(() => {
-    fetchExpenses();
-    fetchCategories();
-  }, []);
+    if (isAuthenticated) {
+      fetchExpenses();
+      fetchCategories();
+    }
+  }, [isAuthenticated]);
 
   const fetchExpenses = async () => {
     try {
-      const response = await fetch(`${API_URL}/expenses`);
-      const data = await response.json();
-      setExpenses(data);
+      const response = await fetch(`${API_URL}/expenses`, {
+        headers: getAuthHeader()
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setExpenses(data);
+      } else if (response.status === 401) {
+        setIsAuthenticated(false);
+      }
     } catch (error) {
       console.error('Error fetching expenses:', error);
     }
@@ -30,12 +48,49 @@ function App() {
 
   const fetchCategories = async () => {
     try {
-      const response = await fetch(`${API_URL}/categories`);
-      const data = await response.json();
-      setCategories(data);
+      const response = await fetch(`${API_URL}/categories`, {
+        headers: getAuthHeader()
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCategories(data);
+      } else if (response.status === 401) {
+        setIsAuthenticated(false);
+      }
     } catch (error) {
       console.error('Error fetching categories:', error);
     }
+  };
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoginError('');
+
+    try {
+      // Test the credentials by fetching categories
+      const token = btoa(`${loginForm.username}:${loginForm.password}`);
+      const response = await fetch(`${API_URL}/categories`, {
+        headers: { 'Authorization': `Basic ${token}` }
+      });
+
+      if (response.ok) {
+        setCredentials({ username: loginForm.username, password: loginForm.password });
+        setIsAuthenticated(true);
+        setLoginForm({ username: '', password: '' });
+      } else {
+        setLoginError('Invalid username or password');
+      }
+    } catch (error) {
+      setLoginError('Error connecting to server');
+      console.error('Login error:', error);
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setCredentials({ username: '', password: '' });
+    setExpenses([]);
+    setCategories([]);
   };
 
   const handleSubmit = async (e) => {
@@ -44,7 +99,8 @@ function App() {
       const response = await fetch(`${API_URL}/expenses`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...getAuthHeader()
         },
         body: JSON.stringify({
           ...formData,
@@ -56,6 +112,8 @@ function App() {
       if (response.ok) {
         setFormData({ amount: '', category_id: '', expense_date: new Date() });
         fetchExpenses();
+      } else if (response.status === 401) {
+        setIsAuthenticated(false);
       }
     } catch (error) {
       console.error('Error creating expense:', error);
@@ -71,9 +129,42 @@ function App() {
 
   const totalAmount = expenses.reduce((sum, expense) => sum + expense.amount, 0);
 
+  // Show login form if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="container">
+        <h1>Spending Tracker</h1>
+        <div className="login-container">
+          <h2>Login</h2>
+          <form onSubmit={handleLogin}>
+            <input
+              type="text"
+              placeholder="Username"
+              value={loginForm.username}
+              onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })}
+              required
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={loginForm.password}
+              onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+              required
+            />
+            {loginError && <p className="error-message">{loginError}</p>}
+            <button type="submit">Login</button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="container">
-      <h1>Spending Tracker</h1>
+      <div className="header">
+        <h1>Spending Tracker</h1>
+        <button onClick={handleLogout} className="logout-btn">Logout</button>
+      </div>
 
       <div className="form-container">
         <h2>Add New Expense</h2>
