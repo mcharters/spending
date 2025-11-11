@@ -70,7 +70,7 @@ def create_expense():
         expense_date = datetime.utcnow().date()
 
     expense = Expense(
-        description=data.get('description'),
+        description=data.get('description', ''),
         amount=data.get('amount'),
         category_id=data.get('category_id'),
         expense_date=expense_date

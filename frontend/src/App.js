@@ -6,7 +6,6 @@ function App() {
   const [expenses, setExpenses] = useState([]);
   const [categories, setCategories] = useState([]);
   const [formData, setFormData] = useState({
-    description: '',
     amount: '',
     category_id: '',
     expense_date: new Date()
@@ -55,7 +54,7 @@ function App() {
       });
 
       if (response.ok) {
-        setFormData({ description: '', amount: '', category_id: '', expense_date: new Date() });
+        setFormData({ amount: '', category_id: '', expense_date: new Date() });
         fetchExpenses();
       }
     } catch (error) {
@@ -79,49 +78,6 @@ function App() {
       <div className="form-container">
         <h2>Add New Expense</h2>
         <form onSubmit={handleSubmit}>
-          <input
-            type="text"
-            name="description"
-            placeholder="Description"
-            value={formData.description}
-            onChange={handleChange}
-            required
-          />
-          <input
-            type="number"
-            name="amount"
-            placeholder="Amount"
-            step="0.01"
-            value={formData.amount}
-            onChange={handleChange}
-            required
-          />
-          <select
-            name="category_id"
-            value={formData.category_id}
-            onChange={handleChange}
-            required
-          >
-            <option value="">Select a category...</option>
-            <optgroup label="Personal">
-              {categories
-                .filter(cat => cat.parent_type === 'Personal')
-                .map(cat => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-            </optgroup>
-            <optgroup label="Shared">
-              {categories
-                .filter(cat => cat.parent_type === 'Shared')
-                .map(cat => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-            </optgroup>
-          </select>
           <div className="date-picker-container">
             <label>Select Date</label>
             <DatePicker
@@ -162,6 +118,41 @@ function App() {
               )}
             />
           </div>
+          <select
+            name="category_id"
+            value={formData.category_id}
+            onChange={handleChange}
+            required
+          >
+            <option value="">Select a category...</option>
+            <optgroup label="Personal">
+              {categories
+                .filter(cat => cat.parent_type === 'Personal')
+                .map(cat => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+            </optgroup>
+            <optgroup label="Shared">
+              {categories
+                .filter(cat => cat.parent_type === 'Shared')
+                .map(cat => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+            </optgroup>
+          </select>
+          <input
+            type="number"
+            name="amount"
+            placeholder="Amount"
+            step="0.01"
+            value={formData.amount}
+            onChange={handleChange}
+            required
+          />
           <button type="submit">Add Expense</button>
         </form>
       </div>
@@ -175,8 +166,8 @@ function App() {
             expenses.map(expense => (
               <div key={expense.id} className="expense-item">
                 <div className="expense-details">
-                  <strong>{expense.description}</strong>
                   <span className="category">{expense.category}</span>
+                  <span className="expense-date">{new Date(expense.expense_date).toLocaleDateString()}</span>
                 </div>
                 <div className="expense-amount">${expense.amount.toFixed(2)}</div>
               </div>
