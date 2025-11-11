@@ -1,11 +1,18 @@
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_migrate import Migrate
+from flask_httpauth import HTTPBasicAuth
+from werkzeug.security import check_password_hash
 import os
+from dotenv import load_dotenv
 from models import db, Expense, Category
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)
+auth = HTTPBasicAuth()
 
 # Database configuration
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -14,6 +21,25 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
 migrate = Migrate(app, db)
+
+# Load users from environment variables
+users = {}
+user1 = os.getenv('AUTH_USER1', '')
+user2 = os.getenv('AUTH_USER2', '')
+
+if user1:
+    username, password_hash = user1.split(':', 1)
+    users[username] = password_hash
+
+if user2:
+    username, password_hash = user2.split(':', 1)
+    users[username] = password_hash
+
+@auth.verify_password
+def verify_password(username, password):
+    if username in users:
+        return check_password_hash(users[username], password)
+    return False
 
 # Seed categories function (call after running migrations)
 def seed_categories():
@@ -52,11 +78,13 @@ def seed_categories_command():
 
 # API Routes
 @app.route('/api/expenses', methods=['GET'])
+@auth.login_required
 def get_expenses():
     expenses = Expense.query.all()
     return jsonify([expense.to_dict() for expense in expenses])
 
 @app.route('/api/expenses', methods=['POST'])
+@auth.login_required
 def create_expense():
     from flask import request
     from datetime import datetime
@@ -80,6 +108,7 @@ def create_expense():
     return jsonify(expense.to_dict()), 201
 
 @app.route('/api/categories', methods=['GET'])
+@auth.login_required
 def get_categories():
     categories = Category.query.all()
     return jsonify([category.to_dict() for category in categories])

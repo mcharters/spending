@@ -9,6 +9,9 @@ venv/
 ENV/
 backend/database.db
 
+# Environment variables
+.env
+
 # Node
 node_modules/
 npm-debug.log*
