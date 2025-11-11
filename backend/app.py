@@ -80,7 +80,11 @@ def seed_categories_command():
 @app.route('/api/expenses', methods=['GET'])
 @auth.login_required
 def get_expenses():
-    expenses = Expense.query.all()
+    username = auth.current_user()
+    # Get expenses created by current user OR expenses with Shared category
+    expenses = Expense.query.join(Category).filter(
+        (Expense.created_by == username) | (Category.parent_type == 'Shared')
+    ).all()
     return jsonify([expense.to_dict() for expense in expenses])
 
 @app.route('/api/expenses', methods=['POST'])
@@ -101,6 +105,7 @@ def create_expense():
         description=data.get('description', ''),
         amount=data.get('amount'),
         category_id=data.get('category_id'),
+        created_by=auth.current_user(),
         expense_date=expense_date
     )
     db.session.add(expense)

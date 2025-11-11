@@ -27,6 +27,7 @@ class Expense(db.Model):
     description = db.Column(db.String(200), nullable=True)
     amount = db.Column(db.Float, nullable=False)
     category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=False)
+    created_by = db.Column(db.String(50), nullable=False)
     expense_date = db.Column(db.Date, nullable=False, default=datetime.utcnow().date)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -41,6 +42,7 @@ class Expense(db.Model):
             'category': self.category.name,
             'category_id': self.category_id,
             'parent_type': self.category.parent_type,
+            'created_by': self.created_by,
             'expense_date': self.expense_date.isoformat(),
             'created_at': self.created_at.isoformat()
         }
