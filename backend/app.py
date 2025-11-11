@@ -59,11 +59,21 @@ def get_expenses():
 @app.route('/api/expenses', methods=['POST'])
 def create_expense():
     from flask import request
+    from datetime import datetime
     data = request.get_json()
+
+    # Parse the date from ISO format if provided, otherwise use today
+    expense_date = data.get('expense_date')
+    if expense_date:
+        expense_date = datetime.fromisoformat(expense_date).date()
+    else:
+        expense_date = datetime.utcnow().date()
+
     expense = Expense(
         description=data.get('description'),
         amount=data.get('amount'),
-        category_id=data.get('category_id')
+        category_id=data.get('category_id'),
+        expense_date=expense_date
     )
     db.session.add(expense)
     db.session.commit()

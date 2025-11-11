@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 function App() {
   const [expenses, setExpenses] = useState([]);
@@ -6,7 +8,8 @@ function App() {
   const [formData, setFormData] = useState({
     description: '',
     amount: '',
-    category_id: ''
+    category_id: '',
+    expense_date: new Date()
   });
 
   const API_URL = process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:5000/api';
@@ -46,12 +49,13 @@ function App() {
         },
         body: JSON.stringify({
           ...formData,
-          amount: parseFloat(formData.amount)
+          amount: parseFloat(formData.amount),
+          expense_date: formData.expense_date.toISOString().split('T')[0]
         })
       });
 
       if (response.ok) {
-        setFormData({ description: '', amount: '', category_id: '' });
+        setFormData({ description: '', amount: '', category_id: '', expense_date: new Date() });
         fetchExpenses();
       }
     } catch (error) {
@@ -118,6 +122,46 @@ function App() {
                 ))}
             </optgroup>
           </select>
+          <div className="date-picker-container">
+            <label>Select Date</label>
+            <DatePicker
+              selected={formData.expense_date}
+              onChange={(date) => setFormData({ ...formData, expense_date: date })}
+              dateFormat="MMMM d, yyyy"
+              inline
+              calendarStartDay={0}
+              showPopperArrow={false}
+              renderCustomHeader={({
+                date,
+                decreaseMonth,
+                increaseMonth,
+                prevMonthButtonDisabled,
+                nextMonthButtonDisabled,
+              }) => (
+                <div className="custom-header">
+                  <button
+                    type="button"
+                    onClick={decreaseMonth}
+                    disabled={prevMonthButtonDisabled}
+                    className="nav-button"
+                  >
+                    ‹
+                  </button>
+                  <span className="month-year">
+                    {date.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={increaseMonth}
+                    disabled={nextMonthButtonDisabled}
+                    className="nav-button"
+                  >
+                    ›
+                  </button>
+                </div>
+              )}
+            />
+          </div>
           <button type="submit">Add Expense</button>
         </form>
       </div>
