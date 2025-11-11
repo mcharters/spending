@@ -49,7 +49,7 @@ function App() {
         body: JSON.stringify({
           ...formData,
           amount: parseFloat(formData.amount),
-          expense_date: formData.expense_date.toISOString().split('T')[0]
+          expense_date: `${formData.expense_date.getFullYear()}-${String(formData.expense_date.getMonth() + 1).padStart(2, '0')}-${String(formData.expense_date.getDate()).padStart(2, '0')}`
         })
       });
 
@@ -167,7 +167,9 @@ function App() {
               <div key={expense.id} className="expense-item">
                 <div className="expense-details">
                   <span className="category">{expense.category}</span>
-                  <span className="expense-date">{new Date(expense.expense_date).toLocaleDateString()}</span>
+                  <span className="expense-date">
+                    {new Date(expense.expense_date + 'T00:00:00').toLocaleDateString()}
+                  </span>
                 </div>
                 <div className="expense-amount">${expense.amount.toFixed(2)}</div>
               </div>
