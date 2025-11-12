@@ -4,10 +4,7 @@ providers = ['python', 'node']
 nixPkgs = ['...']
 
 [phases.install]
-cmds = [
-  "cd frontend && npm install",
-  "cd backend && pip install -r requirements.txt"
-]
+cmds = ["cd frontend && npm install"]
 
 [phases.build]
 cmds = ["cd frontend && npm run build"]
