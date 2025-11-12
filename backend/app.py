@@ -77,8 +77,6 @@ def seed_categories_command():
             print("Categories already exist, skipping seed")
 
 def seed_budgets():
-    print("Seeding budgets for users:", end=' ')
-    print(user1, user2)
     """Seed initial budgets for all categories."""
     from datetime import datetime
 
@@ -89,24 +87,6 @@ def seed_budgets():
     # user=None for Shared categories, user='user1' or 'user2' for Personal categories
 
     budget_data = [
-        # Personal categories - user1
-        ('Beauty', 100, user1),
-        ('Clothing', 100, user1),
-        ('Media', 50, user1),
-        ('Misc', 500, user1),
-        ('Workouts', 75, user1),
-        ('Dining', 600, user1),
-        ('Outings', 250, user1),
-
-        # Personal categories - user2
-        ('Beauty', 100, user2),
-        ('Clothing', 100, user2),
-        ('Media', 50, user2),
-        ('Misc', 500, user2),
-        ('Workouts', 75, user2),
-        ('Dining', 600, user2),
-        ('Outings', 250, user2),
-
         # Shared categories (user=None)
         ('Car', 300, None),
         ('Groceries', 1200, None),
@@ -116,6 +96,18 @@ def seed_budgets():
         ('Counselling', 1000, None),
         ('Entertainment', 100, None),
     ]
+
+    # add personal categories for each user in users
+    for username in users.keys():
+        budget_data.extend([
+            ('Beauty', 100, username),
+            ('Clothing', 100, username),
+            ('Media', 50, username),
+            ('Misc', 500, username),
+            ('Workouts', 75, username),
+            ('Dining', 600, username),
+            ('Outings', 250, username),
+        ])
 
     budgets = []
     for category_name, monthly_amount, user in budget_data:
