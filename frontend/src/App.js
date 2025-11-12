@@ -85,6 +85,7 @@ function AuthWrapper() {
     <Routes>
       <Route path="/" element={<MainView apiUrl={API_URL} getAuthHeader={getAuthHeader} handleLogout={handleLogout} setIsAuthenticated={setIsAuthenticated} />} />
       <Route path="/detail/:parentType" element={<DetailView apiUrl={API_URL} getAuthHeader={getAuthHeader} handleLogout={handleLogout} setIsAuthenticated={setIsAuthenticated} />} />
+      <Route path="/expenses/:categoryId" element={<ExpenseListView apiUrl={API_URL} getAuthHeader={getAuthHeader} handleLogout={handleLogout} setIsAuthenticated={setIsAuthenticated} />} />
     </Routes>
   );
 }
@@ -367,7 +368,7 @@ function DetailView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated })
         <h2>{parentType} Categories</h2>
         <div className="summary-cards">
           {categoryBudgets.map(budget => (
-            <div key={budget.id} className="summary-card">
+            <div key={budget.id} className="summary-card clickable" onClick={() => navigate(`/expenses/${budget.category_id}`)}>
               <h3>{budget.category}</h3>
               <div className="summary-amount">
                 <span className="spent">${formatCurrency(budget.current_spent)}</span>
@@ -386,6 +387,122 @@ function DetailView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated })
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ExpenseListView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
+  const [expenses, setExpenses] = useState([]);
+  const [categoryName, setCategoryName] = useState('');
+  const [parentType, setParentType] = useState('');
+  const { categoryId } = useParams();
+  const navigate = useNavigate();
+
+  const API_URL = apiUrl;
+
+  useEffect(() => {
+    fetchExpenses();
+  }, []);
+
+  const fetchExpenses = async () => {
+    try {
+      const response = await fetch(`${API_URL}/expenses`, {
+        headers: getAuthHeader()
+      });
+      if (response.ok) {
+        const data = await response.json();
+        // Filter expenses for this category and current month
+        const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+        const filtered = data.filter(exp =>
+          exp.category_id === parseInt(categoryId) &&
+          exp.expense_date.startsWith(currentMonth)
+        );
+        setExpenses(filtered);
+
+        // Get category name and parent type from first expense
+        if (filtered.length > 0) {
+          setCategoryName(filtered[0].category);
+          setParentType(filtered[0].parent_type);
+        } else {
+          // If no expenses, fetch categories to get the name
+          fetchCategoryInfo();
+        }
+      } else if (response.status === 401) {
+        setIsAuthenticated(false);
+      }
+    } catch (error) {
+      console.error('Error fetching expenses:', error);
+    }
+  };
+
+  const fetchCategoryInfo = async () => {
+    try {
+      const response = await fetch(`${API_URL}/categories`, {
+        headers: getAuthHeader()
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const category = data.find(cat => cat.id === parseInt(categoryId));
+        if (category) {
+          setCategoryName(category.name);
+          setParentType(category.parent_type);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching category info:', error);
+    }
+  };
+
+  const formatCurrency = (amount) => {
+    return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString + 'T00:00:00');
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const totalSpent = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+
+  return (
+    <div className="container">
+      <div className="header">
+        <h1>Spending Tracker</h1>
+        <button onClick={handleLogout} className="logout-btn">Logout</button>
+      </div>
+
+      <div className="summary-container">
+        <div className="back-button-container">
+          <button onClick={() => navigate(`/detail/${parentType}`)} className="back-btn">← Back to {parentType} Categories</button>
+        </div>
+        <h2>{categoryName} Expenses</h2>
+
+        <div className="expense-summary">
+          <div className="expense-total">
+            <span className="total-label">Total Spent This Month:</span>
+            <span className="total-amount">${formatCurrency(totalSpent)}</span>
+          </div>
+        </div>
+
+        {expenses.length === 0 ? (
+          <p className="no-expenses">No expenses recorded for this category this month.</p>
+        ) : (
+          <div className="expense-list">
+            {expenses.map(expense => (
+              <div key={expense.id} className="expense-item">
+                <div className="expense-date">{formatDate(expense.expense_date)}</div>
+                <div className="expense-details">
+                  {expense.description && <div className="expense-description">{expense.description}</div>}
+                  <div className="expense-meta">
+                    <span className="expense-user">by {expense.created_by}</span>
+                  </div>
+                </div>
+                <div className="expense-amount">${formatCurrency(expense.amount)}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

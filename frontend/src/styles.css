@@ -380,3 +380,96 @@ button:hover {
 .back-btn:hover {
   background-color: #555;
 }
+
+/* Expense List Styles */
+.expense-summary {
+  background: #f9f9f9;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border-left: 4px solid #4CAF50;
+}
+
+.expense-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.total-label {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: #555;
+}
+
+.total-amount {
+  font-size: 1.8rem;
+  font-weight: bold;
+  color: #333;
+}
+
+.no-expenses {
+  text-align: center;
+  color: #999;
+  font-style: italic;
+  padding: 40px 20px;
+  font-size: 1rem;
+}
+
+.expense-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.expense-item {
+  background: white;
+  padding: 16px;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  transition: box-shadow 0.2s;
+}
+
+.expense-item:hover {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.expense-date {
+  font-size: 0.9rem;
+  color: #666;
+  font-weight: 500;
+  min-width: 90px;
+  white-space: nowrap;
+}
+
+.expense-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.expense-description {
+  font-size: 1rem;
+  color: #333;
+  font-weight: 500;
+}
+
+.expense-meta {
+  font-size: 0.85rem;
+  color: #888;
+}
+
+.expense-user {
+  font-style: italic;
+}
+
+.expense-amount {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #333;
+  white-space: nowrap;
+}
