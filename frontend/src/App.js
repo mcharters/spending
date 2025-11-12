@@ -139,6 +139,11 @@ function App() {
   const sharedTotalSpent = sharedBudgets.reduce((sum, b) => sum + b.current_spent, 0);
   const sharedRemaining = sharedBudgets.reduce((sum, b) => sum + b.remaining, 0);
 
+  // Format currency with commas
+  const formatCurrency = (amount) => {
+    return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
   // Show login form if not authenticated
   if (!isAuthenticated) {
     return (
@@ -264,12 +269,12 @@ function App() {
           <div className="summary-card">
             <h3>Personal Spending</h3>
             <div className="summary-amount">
-              <span className="spent">${personalTotalSpent.toFixed(2)}</span>
+              <span className="spent">${formatCurrency(personalTotalSpent)}</span>
               <span className="separator"> / </span>
-              <span className="budget">${personalTotalBudget.toFixed(2)}</span>
+              <span className="budget">${formatCurrency(personalTotalBudget)}</span>
             </div>
             <div className={`remaining ${personalRemaining < 0 ? 'over-budget' : ''}`}>
-              {personalRemaining < 0 ? 'Over by' : 'Remaining'}: ${Math.abs(personalRemaining).toFixed(2)}
+              {personalRemaining < 0 ? 'Over by' : 'Remaining'}: ${formatCurrency(Math.abs(personalRemaining))}
             </div>
             <div className="progress-bar">
               <div
@@ -282,12 +287,12 @@ function App() {
           <div className="summary-card">
             <h3>Shared Spending</h3>
             <div className="summary-amount">
-              <span className="spent">${sharedTotalSpent.toFixed(2)}</span>
+              <span className="spent">${formatCurrency(sharedTotalSpent)}</span>
               <span className="separator"> / </span>
-              <span className="budget">${sharedTotalBudget.toFixed(2)}</span>
+              <span className="budget">${formatCurrency(sharedTotalBudget)}</span>
             </div>
             <div className={`remaining ${sharedRemaining < 0 ? 'over-budget' : ''}`}>
-              {sharedRemaining < 0 ? 'Over by' : 'Remaining'}: ${Math.abs(sharedRemaining).toFixed(2)}
+              {sharedRemaining < 0 ? 'Over by' : 'Remaining'}: ${formatCurrency(Math.abs(sharedRemaining))}
             </div>
             <div className="progress-bar">
               <div
