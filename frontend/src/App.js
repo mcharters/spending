@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 
 function App() {
-  const [budgets, setBudgets] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [formData, setFormData] = useState({
-    amount: '',
-    category_id: '',
-    expense_date: new Date()
-  });
+  return (
+    <Router>
+      <AuthWrapper />
+    </Router>
+  );
+}
+
+function AuthWrapper() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [credentials, setCredentials] = useState({ username: '', password: '' });
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
@@ -17,18 +19,92 @@ function App() {
 
   const API_URL = process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:5000/api';
 
-  // Create Basic Auth header
   const getAuthHeader = () => {
     const token = btoa(`${credentials.username}:${credentials.password}`);
     return { 'Authorization': `Basic ${token}` };
   };
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchBudgets();
-      fetchCategories();
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoginError('');
+
+    try {
+      const token = btoa(`${loginForm.username}:${loginForm.password}`);
+      const response = await fetch(`${API_URL}/categories`, {
+        headers: { 'Authorization': `Basic ${token}` }
+      });
+
+      if (response.ok) {
+        setCredentials({ username: loginForm.username, password: loginForm.password });
+        setIsAuthenticated(true);
+        setLoginForm({ username: '', password: '' });
+      } else {
+        setLoginError('Invalid username or password');
+      }
+    } catch (error) {
+      setLoginError('Error connecting to server');
+      console.error('Login error:', error);
     }
-  }, [isAuthenticated]);
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setCredentials({ username: '', password: '' });
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="container">
+        <h1>Spending Tracker</h1>
+        <div className="login-container">
+          <h2>Login</h2>
+          <form onSubmit={handleLogin}>
+            <input
+              type="text"
+              placeholder="Username"
+              value={loginForm.username}
+              onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })}
+              required
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={loginForm.password}
+              onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+              required
+            />
+            {loginError && <p className="error-message">{loginError}</p>}
+            <button type="submit">Login</button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Routes>
+      <Route path="/" element={<MainView apiUrl={API_URL} getAuthHeader={getAuthHeader} handleLogout={handleLogout} setIsAuthenticated={setIsAuthenticated} />} />
+      <Route path="/detail/:parentType" element={<DetailView apiUrl={API_URL} getAuthHeader={getAuthHeader} handleLogout={handleLogout} setIsAuthenticated={setIsAuthenticated} />} />
+    </Routes>
+  );
+}
+
+function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
+  const [budgets, setBudgets] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [formData, setFormData] = useState({
+    amount: '',
+    category_id: '',
+    expense_date: new Date()
+  });
+  const navigate = useNavigate();
+
+  const API_URL = apiUrl;
+
+  useEffect(() => {
+    fetchBudgets();
+    fetchCategories();
+  }, []);
 
   const fetchBudgets = async () => {
     try {
@@ -60,37 +136,6 @@ function App() {
     } catch (error) {
       console.error('Error fetching categories:', error);
     }
-  };
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setLoginError('');
-
-    try {
-      // Test the credentials by fetching categories
-      const token = btoa(`${loginForm.username}:${loginForm.password}`);
-      const response = await fetch(`${API_URL}/categories`, {
-        headers: { 'Authorization': `Basic ${token}` }
-      });
-
-      if (response.ok) {
-        setCredentials({ username: loginForm.username, password: loginForm.password });
-        setIsAuthenticated(true);
-        setLoginForm({ username: '', password: '' });
-      } else {
-        setLoginError('Invalid username or password');
-      }
-    } catch (error) {
-      setLoginError('Error connecting to server');
-      console.error('Login error:', error);
-    }
-  };
-
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    setCredentials({ username: '', password: '' });
-    setBudgets([]);
-    setCategories([]);
   };
 
   const handleSubmit = async (e) => {
@@ -127,7 +172,6 @@ function App() {
     });
   };
 
-  // Calculate Personal and Shared summaries
   const personalBudgets = budgets.filter(b => b.user !== null);
   const sharedBudgets = budgets.filter(b => b.user === null);
 
@@ -139,40 +183,9 @@ function App() {
   const sharedTotalSpent = sharedBudgets.reduce((sum, b) => sum + b.current_spent, 0);
   const sharedRemaining = sharedBudgets.reduce((sum, b) => sum + b.remaining, 0);
 
-  // Format currency with commas
   const formatCurrency = (amount) => {
     return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
-
-  // Show login form if not authenticated
-  if (!isAuthenticated) {
-    return (
-      <div className="container">
-        <h1>Spending Tracker</h1>
-        <div className="login-container">
-          <h2>Login</h2>
-          <form onSubmit={handleLogin}>
-            <input
-              type="text"
-              placeholder="Username"
-              value={loginForm.username}
-              onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })}
-              required
-            />
-            <input
-              type="password"
-              placeholder="Password"
-              value={loginForm.password}
-              onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
-              required
-            />
-            {loginError && <p className="error-message">{loginError}</p>}
-            <button type="submit">Login</button>
-          </form>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="container">
@@ -266,7 +279,7 @@ function App() {
       <div className="summary-container">
         <h2>Current Month Summary</h2>
         <div className="summary-cards">
-          <div className="summary-card">
+          <div className="summary-card clickable" onClick={() => navigate('/detail/Personal')}>
             <h3>Personal Spending</h3>
             <div className="summary-amount">
               <span className="spent">${formatCurrency(personalTotalSpent)}</span>
@@ -284,7 +297,7 @@ function App() {
             </div>
           </div>
 
-          <div className="summary-card">
+          <div className="summary-card clickable" onClick={() => navigate('/detail/Shared')}>
             <h3>Shared Spending</h3>
             <div className="summary-amount">
               <span className="spent">${formatCurrency(sharedTotalSpent)}</span>
@@ -301,6 +314,77 @@ function App() {
               ></div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
+  const [budgets, setBudgets] = useState([]);
+  const { parentType } = useParams();
+  const navigate = useNavigate();
+
+  const API_URL = apiUrl;
+
+  useEffect(() => {
+    fetchBudgets();
+  }, []);
+
+  const fetchBudgets = async () => {
+    try {
+      const response = await fetch(`${API_URL}/budgets`, {
+        headers: getAuthHeader()
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setBudgets(data);
+      } else if (response.status === 401) {
+        setIsAuthenticated(false);
+      }
+    } catch (error) {
+      console.error('Error fetching budgets:', error);
+    }
+  };
+
+  const formatCurrency = (amount) => {
+    return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const categoryBudgets = budgets.filter(b => b.parent_type === parentType);
+
+  return (
+    <div className="container">
+      <div className="header">
+        <h1>Spending Tracker</h1>
+        <button onClick={handleLogout} className="logout-btn">Logout</button>
+      </div>
+
+      <div className="summary-container">
+        <div className="back-button-container">
+          <button onClick={() => navigate('/')} className="back-btn">← Back to Summary</button>
+        </div>
+        <h2>{parentType} Categories</h2>
+        <div className="summary-cards">
+          {categoryBudgets.map(budget => (
+            <div key={budget.id} className="summary-card">
+              <h3>{budget.category}</h3>
+              <div className="summary-amount">
+                <span className="spent">${formatCurrency(budget.current_spent)}</span>
+                <span className="separator"> / </span>
+                <span className="budget">${formatCurrency(budget.effective_budget)}</span>
+              </div>
+              <div className={`remaining ${budget.remaining < 0 ? 'over-budget' : ''}`}>
+                {budget.remaining < 0 ? 'Over by' : 'Remaining'}: ${formatCurrency(Math.abs(budget.remaining))}
+              </div>
+              <div className="progress-bar">
+                <div
+                  className={`progress-fill ${budget.remaining < 0 ? 'over-budget' : ''}`}
+                  style={{ width: `${Math.min((budget.current_spent / budget.effective_budget) * 100, 100)}%` }}
+                ></div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
