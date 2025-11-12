@@ -3,7 +3,7 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 
 function App() {
-  const [expenses, setExpenses] = useState([]);
+  const [budgets, setBudgets] = useState([]);
   const [categories, setCategories] = useState([]);
   const [formData, setFormData] = useState({
     amount: '',
@@ -25,24 +25,24 @@ function App() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      fetchExpenses();
+      fetchBudgets();
       fetchCategories();
     }
   }, [isAuthenticated]);
 
-  const fetchExpenses = async () => {
+  const fetchBudgets = async () => {
     try {
-      const response = await fetch(`${API_URL}/expenses`, {
+      const response = await fetch(`${API_URL}/budgets`, {
         headers: getAuthHeader()
       });
       if (response.ok) {
         const data = await response.json();
-        setExpenses(data);
+        setBudgets(data);
       } else if (response.status === 401) {
         setIsAuthenticated(false);
       }
     } catch (error) {
-      console.error('Error fetching expenses:', error);
+      console.error('Error fetching budgets:', error);
     }
   };
 
@@ -89,7 +89,7 @@ function App() {
   const handleLogout = () => {
     setIsAuthenticated(false);
     setCredentials({ username: '', password: '' });
-    setExpenses([]);
+    setBudgets([]);
     setCategories([]);
   };
 
@@ -111,7 +111,7 @@ function App() {
 
       if (response.ok) {
         setFormData({ amount: '', category_id: '', expense_date: new Date() });
-        fetchExpenses();
+        fetchBudgets();
       } else if (response.status === 401) {
         setIsAuthenticated(false);
       }
@@ -127,7 +127,17 @@ function App() {
     });
   };
 
-  const totalAmount = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  // Calculate Personal and Shared summaries
+  const personalBudgets = budgets.filter(b => b.user !== null);
+  const sharedBudgets = budgets.filter(b => b.user === null);
+
+  const personalTotalBudget = personalBudgets.reduce((sum, b) => sum + b.effective_budget, 0);
+  const personalTotalSpent = personalBudgets.reduce((sum, b) => sum + b.current_spent, 0);
+  const personalRemaining = personalBudgets.reduce((sum, b) => sum + b.remaining, 0);
+
+  const sharedTotalBudget = sharedBudgets.reduce((sum, b) => sum + b.effective_budget, 0);
+  const sharedTotalSpent = sharedBudgets.reduce((sum, b) => sum + b.current_spent, 0);
+  const sharedRemaining = sharedBudgets.reduce((sum, b) => sum + b.remaining, 0);
 
   // Show login form if not authenticated
   if (!isAuthenticated) {
@@ -248,24 +258,44 @@ function App() {
         </form>
       </div>
 
-      <div className="expenses-container">
-        <h2>Expenses (Total: ${totalAmount.toFixed(2)})</h2>
-        <div className="expenses-list">
-          {expenses.length === 0 ? (
-            <p>No expenses yet. Add your first expense above!</p>
-          ) : (
-            expenses.map(expense => (
-              <div key={expense.id} className="expense-item">
-                <div className="expense-details">
-                  <span className="category">{expense.category}</span>
-                  <span className="expense-date">
-                    {new Date(expense.expense_date + 'T00:00:00').toLocaleDateString()}
-                  </span>
-                </div>
-                <div className="expense-amount">${expense.amount.toFixed(2)}</div>
-              </div>
-            ))
-          )}
+      <div className="summary-container">
+        <h2>Current Month Summary</h2>
+        <div className="summary-cards">
+          <div className="summary-card">
+            <h3>Personal Spending</h3>
+            <div className="summary-amount">
+              <span className="spent">${personalTotalSpent.toFixed(2)}</span>
+              <span className="separator"> / </span>
+              <span className="budget">${personalTotalBudget.toFixed(2)}</span>
+            </div>
+            <div className={`remaining ${personalRemaining < 0 ? 'over-budget' : ''}`}>
+              {personalRemaining < 0 ? 'Over by' : 'Remaining'}: ${Math.abs(personalRemaining).toFixed(2)}
+            </div>
+            <div className="progress-bar">
+              <div
+                className={`progress-fill ${personalRemaining < 0 ? 'over-budget' : ''}`}
+                style={{ width: `${Math.min((personalTotalSpent / personalTotalBudget) * 100, 100)}%` }}
+              ></div>
+            </div>
+          </div>
+
+          <div className="summary-card">
+            <h3>Shared Spending</h3>
+            <div className="summary-amount">
+              <span className="spent">${sharedTotalSpent.toFixed(2)}</span>
+              <span className="separator"> / </span>
+              <span className="budget">${sharedTotalBudget.toFixed(2)}</span>
+            </div>
+            <div className={`remaining ${sharedRemaining < 0 ? 'over-budget' : ''}`}>
+              {sharedRemaining < 0 ? 'Over by' : 'Remaining'}: ${Math.abs(sharedRemaining).toFixed(2)}
+            </div>
+            <div className="progress-bar">
+              <div
+                className={`progress-fill ${sharedRemaining < 0 ? 'over-budget' : ''}`}
+                style={{ width: `${Math.min((sharedTotalSpent / sharedTotalBudget) * 100, 100)}%` }}
+              ></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -126,50 +126,86 @@ button:hover {
   background-color: #45a049;
 }
 
-.expenses-container {
+/* Summary Container Styles */
+.summary-container {
   background: white;
   padding: 25px;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.expenses-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
 }
 
-.expense-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 15px;
-  background-color: #f9f9f9;
-  border-radius: 4px;
+.summary-card {
+  background: #f9f9f9;
+  padding: 20px;
+  border-radius: 8px;
   border-left: 4px solid #4CAF50;
 }
 
-.expense-details {
+.summary-card h3 {
+  color: #333;
+  font-size: 1.1rem;
+  margin-bottom: 15px;
+  font-weight: 600;
+}
+
+.summary-amount {
+  font-size: 1.8rem;
+  font-weight: bold;
+  margin-bottom: 10px;
   display: flex;
-  flex-direction: column;
+  align-items: baseline;
   gap: 5px;
 }
 
-.category {
-  font-size: 14px;
+.summary-amount .spent {
   color: #333;
-  font-weight: 500;
 }
 
-.expense-date {
-  font-size: 12px;
-  color: #777;
+.summary-amount .separator {
+  color: #999;
+  font-size: 1.2rem;
+  font-weight: normal;
 }
 
-.expense-amount {
-  font-size: 18px;
-  font-weight: bold;
+.summary-amount .budget {
+  color: #666;
+  font-size: 1.4rem;
+}
+
+.remaining {
+  font-size: 1rem;
   color: #4CAF50;
+  font-weight: 500;
+  margin-bottom: 15px;
+}
+
+.remaining.over-budget {
+  color: #f44336;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 12px;
+  background-color: #e0e0e0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: #4CAF50;
+  transition: width 0.3s ease;
+}
+
+.progress-fill.over-budget {
+  background-color: #f44336;
 }
 
 /* DatePicker Styles */
