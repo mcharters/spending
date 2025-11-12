@@ -156,7 +156,7 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
       });
 
       if (response.ok) {
-        setFormData({ amount: '', category_id: '', expense_date: new Date() });
+        setFormData({ ...formData, amount: '', category_id: '' });
         fetchBudgets();
       } else if (response.status === 401) {
         setIsAuthenticated(false);
