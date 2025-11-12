@@ -88,22 +88,22 @@ def seed_budgets():
 
     budget_data = [
         # Personal categories - user1
-        ('Beauty', 100, 'user1'),
-        ('Clothing', 100, 'user1'),
-        ('Media', 50, 'user1'),
-        ('Misc', 500, 'user1'),
-        ('Workouts', 75, 'user1'),
-        ('Dining', 600, 'user1'),
-        ('Outings', 250, 'user1'),
+        ('Beauty', 100, user1),
+        ('Clothing', 100, user1),
+        ('Media', 50, user1),
+        ('Misc', 500, user1),
+        ('Workouts', 75, user1),
+        ('Dining', 600, user1),
+        ('Outings', 250, user1),
 
         # Personal categories - user2
-        ('Beauty', 100, 'user2'),
-        ('Clothing', 100, 'user2'),
-        ('Media', 50, 'user2'),
-        ('Misc', 500, 'user2'),
-        ('Workouts', 75, 'user2'),
-        ('Dining', 600, 'user2'),
-        ('Outings', 250, 'user2'),
+        ('Beauty', 100, user2),
+        ('Clothing', 100, user2),
+        ('Media', 50, user2),
+        ('Misc', 500, user2),
+        ('Workouts', 75, user2),
+        ('Dining', 600, user2),
+        ('Outings', 250, user2),
 
         # Shared categories (user=None)
         ('Car', 300, None),
