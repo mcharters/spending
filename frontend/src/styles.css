@@ -17,31 +17,25 @@ body {
   max-width: 800px;
   margin: 0 auto;
   padding: 20px;
+  padding-bottom: 80px;
 }
 
-.header {
+.footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  border-top: 1px solid #e0e0e0;
+  padding: 15px;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 30px;
-}
-
-h1 {
-  color: #333;
-  margin: 0;
-  text-align: center;
-  flex-grow: 1;
-}
-
-h2 {
-  color: #555;
-  margin-bottom: 15px;
-  font-size: 1.3rem;
+  justify-content: center;
+  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .logout-btn {
   background-color: #f44336;
-  padding: 8px 16px;
+  padding: 10px 24px;
   font-size: 14px;
 }
 

@@ -190,13 +190,7 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
 
   return (
     <div className="container">
-      <div className="header">
-        <h1>Spending Tracker</h1>
-        <button onClick={handleLogout} className="logout-btn">Logout</button>
-      </div>
-
       <div className="form-container">
-        <h2>Add New Expense</h2>
         <form onSubmit={handleSubmit}>
           <div className="date-picker-container">
             <label>Select Date</label>
@@ -278,7 +272,6 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
       </div>
 
       <div className="summary-container">
-        <h2>Current Month Summary</h2>
         <div className="summary-cards">
           <div className="summary-card clickable" onClick={() => navigate('/detail/Personal')}>
             <h3>Personal Spending</h3>
@@ -317,6 +310,10 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
           </div>
         </div>
       </div>
+
+      <footer className="footer">
+        <button onClick={handleLogout} className="logout-btn">Logout</button>
+      </footer>
     </div>
   );
 }
@@ -356,16 +353,10 @@ function DetailView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated })
 
   return (
     <div className="container">
-      <div className="header">
-        <h1>Spending Tracker</h1>
-        <button onClick={handleLogout} className="logout-btn">Logout</button>
-      </div>
-
       <div className="summary-container">
         <div className="back-button-container">
           <button onClick={() => navigate('/')} className="back-btn">← Back to Summary</button>
         </div>
-        <h2>{parentType} Categories</h2>
         <div className="summary-cards">
           {categoryBudgets.map(budget => (
             <div key={budget.id} className="summary-card clickable" onClick={() => navigate(`/expenses/${budget.category_id}`)}>
@@ -388,6 +379,10 @@ function DetailView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated })
           ))}
         </div>
       </div>
+
+      <footer className="footer">
+        <button onClick={handleLogout} className="logout-btn">Logout</button>
+      </footer>
     </div>
   );
 }
@@ -467,16 +462,10 @@ function ExpenseListView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticat
 
   return (
     <div className="container">
-      <div className="header">
-        <h1>Spending Tracker</h1>
-        <button onClick={handleLogout} className="logout-btn">Logout</button>
-      </div>
-
       <div className="summary-container">
         <div className="back-button-container">
           <button onClick={() => navigate(`/detail/${parentType}`)} className="back-btn">← Back to {parentType} Categories</button>
         </div>
-        <h2>{categoryName} Expenses</h2>
 
         <div className="expense-summary">
           <div className="expense-total">
@@ -504,6 +493,10 @@ function ExpenseListView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticat
           </div>
         )}
       </div>
+
+      <footer className="footer">
+        <button onClick={handleLogout} className="logout-btn">Logout</button>
+      </footer>
     </div>
   );
 }
