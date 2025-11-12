@@ -10,4 +10,4 @@ cmds = ["cd frontend && npm install"]
 cmds = ["cd frontend && npm run build"]
 
 [start]
-cmd = "cd backend && flask db upgrade && gunicorn app:app"
+cmd = "cd backend && python -m flask db upgrade && gunicorn app:app"
