@@ -19,7 +19,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # Build outputs
-backend/static/
+# backend/static/ - COMMITTED: Built frontend files are committed to git
 dist/
 build/
 
