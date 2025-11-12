@@ -16,7 +16,9 @@ auth = HTTPBasicAuth()
 
 # Database configuration
 basedir = os.path.abspath(os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'database.db')
+datadir = os.path.join(basedir, 'data')
+os.makedirs(datadir, exist_ok=True)  # Ensure data directory exists
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(datadir, 'database.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)

@@ -7,7 +7,7 @@ __pycache__/
 env/
 venv/
 ENV/
-backend/database.db
+backend/data/
 
 # Environment variables
 .env
