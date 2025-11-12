@@ -8,14 +8,14 @@
   "steps": {
     "install": {
       "commands": [
-        "...",
-        "cd ../frontend && npm install"
+        "cd backend && pip install -r requirements.txt",
+        "cd frontend && npm install"
       ]
     },
     "build": {
       "inputs": [{ "step": "install" }],
       "commands": [
-        "cd ../frontend && npm run build"
+        "cd frontend && npm run build"
       ]
     }
   }
