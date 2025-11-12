@@ -77,6 +77,8 @@ def seed_categories_command():
             print("Categories already exist, skipping seed")
 
 def seed_budgets():
+    print("Seeding budgets for users:", end=' ')
+    print(user1, user2)
     """Seed initial budgets for all categories."""
     from datetime import datetime
 
