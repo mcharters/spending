@@ -49,3 +49,39 @@ class Expense(db.Model):
 
     def __repr__(self):
         return f'<Expense {self.description}: ${self.amount}>'
+
+class Budget(db.Model):
+    __tablename__ = 'budgets'
+
+    id = db.Column(db.Integer, primary_key=True)
+    category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=False)
+    user = db.Column(db.String(50), nullable=True)  # null for Shared categories, username for Personal
+    monthly_amount = db.Column(db.Float, nullable=False)
+    cumulative_balance = db.Column(db.Float, default=0)
+    last_updated_month = db.Column(db.String(7), nullable=False)  # "YYYY-MM" format
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationship to Category
+    category = db.relationship('Category', backref='budgets')
+
+    # Unique constraint: one budget per (category_id, user) combination
+    __table_args__ = (
+        db.UniqueConstraint('category_id', 'user', name='unique_category_user_budget'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'category_id': self.category_id,
+            'category': self.category.name,
+            'parent_type': self.category.parent_type,
+            'user': self.user,
+            'monthly_amount': self.monthly_amount,
+            'cumulative_balance': self.cumulative_balance,
+            'last_updated_month': self.last_updated_month,
+            'created_at': self.created_at.isoformat()
+        }
+
+    def __repr__(self):
+        user_str = self.user if self.user else 'shared'
+        return f'<Budget {self.category.name} ({user_str}): ${self.monthly_amount}/month>'
