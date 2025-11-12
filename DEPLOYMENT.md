@@ -102,19 +102,24 @@ After one successful deployment, revert it back to:
 
 ## Application Structure
 
-The deployment process:
+The deployment process uses Nixpacks with a custom `nixpacks.toml` configuration:
 
-1. **Build Phase:**
+1. **Setup Phase:**
+   - Installs Node.js and Python 3.9
+
+2. **Install Phase:**
    - Installs Node.js dependencies in `frontend/`
-   - Builds React app with `npm run build` (outputs to `backend/static/`)
    - Installs Python dependencies from `backend/requirements.txt`
 
-2. **Deploy Phase:**
+3. **Build Phase:**
+   - Builds React app with `npm run build` (outputs to `backend/static/`)
+
+4. **Deploy Phase:**
    - Changes to `backend/` directory
    - Runs database migrations (`flask db upgrade`)
-   - Starts gunicorn server on port 5000
+   - Starts gunicorn server
 
-3. **Runtime:**
+5. **Runtime:**
    - Flask serves the React app from `backend/static/`
    - API endpoints available at `/api/*`
    - All other routes serve the React app
