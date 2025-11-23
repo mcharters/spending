@@ -248,8 +248,31 @@ venv\Scripts\activate     # Windows
 source venv/bin/activate  # Mac/Linux
 flask db upgrade          # Apply all migrations
 flask seed-categories     # Seed initial categories
+flask seed-budgets        # Seed initial budgets
 python app.py            # Start server
 ```
+
+### IMPORTANT: Never Delete the Dev Database
+
+**WARNING**: The dev database at `backend/data/database.db` should NEVER be deleted manually. It persists all your expense and budget data across sessions.
+
+**What NOT to do:**
+```bash
+rm backend/data/database.db  # ❌ NEVER DO THIS - will lose all data!
+```
+
+**If the database gets corrupted or needs to be reset:**
+1. Back up any important data first
+2. Delete the database file: `rm backend/data/database.db`
+3. Run migrations: `flask db upgrade`
+4. Seed initial data: `flask seed-categories && flask seed-budgets`
+
+**Database persistence:**
+- ✅ Persists across code changes
+- ✅ Persists across server restarts
+- ✅ Isolated from test runs (tests use in-memory database)
+- ✅ Gitignored (will not be committed to git)
+- ❌ Will be lost if you delete `backend/data/database.db`
 
 ## Coding Conventions
 
