@@ -301,14 +301,23 @@ def get_budgets():
 
         return jsonify(budget_status)
 
-    # Handle future months: show projected budgets with current cumulative balance
+    # Handle future months: show projected budgets with asymmetric surplus/deficit handling
     if is_future_month:
         for budget in budgets:
-            # For future months, the cumulative balance stays the same (carries forward from current month)
-            # The effective budget is: monthly_amount + cumulative_balance
-            # This means surpluses add to next month's budget, deficits reduce it
+            # For future months:
+            # - Surpluses (positive cumulative balance) increase the effective budget
+            # - Deficits (negative cumulative balance) show as spending in the next month
 
-            effective_budget = budget.monthly_amount + budget.cumulative_balance
+            if budget.cumulative_balance >= 0:
+                # Surplus: add to effective budget
+                effective_budget = budget.monthly_amount + budget.cumulative_balance
+                current_spent = 0
+            else:
+                # Deficit: show as spending, budget stays at monthly amount
+                effective_budget = budget.monthly_amount
+                current_spent = abs(budget.cumulative_balance)  # Convert deficit to positive spending
+
+            remaining = effective_budget - current_spent
 
             budget_status.append({
                 'id': budget.id,
@@ -317,11 +326,11 @@ def get_budgets():
                 'parent_type': budget.category.parent_type,
                 'user': budget.user,
                 'monthly_amount': budget.monthly_amount,
-                'cumulative_balance': budget.cumulative_balance,  # Carries forward unchanged
+                'cumulative_balance': budget.cumulative_balance,  # Keep for reference
                 'effective_budget': effective_budget,
-                'current_spent': 0,  # Future month, no spending yet
-                'remaining': effective_budget,
-                'is_over_budget': effective_budget < 0
+                'current_spent': current_spent,
+                'remaining': remaining,
+                'is_over_budget': remaining < 0
             })
 
         return jsonify(budget_status)
