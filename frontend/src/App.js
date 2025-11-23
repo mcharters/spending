@@ -93,6 +93,8 @@ function AuthWrapper() {
 function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
   const [budgets, setBudgets] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [errorMessage, setErrorMessage] = useState('');
   const [formData, setFormData] = useState({
     amount: '',
     category_id: '',
@@ -105,11 +107,12 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
   useEffect(() => {
     fetchBudgets();
     fetchCategories();
-  }, []);
+  }, [selectedMonth]);
 
   const fetchBudgets = async () => {
     try {
-      const response = await fetch(`${API_URL}/budgets`, {
+      const monthStr = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`;
+      const response = await fetch(`${API_URL}/budgets?month=${monthStr}`, {
         headers: getAuthHeader()
       });
       if (response.ok) {
@@ -117,9 +120,13 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
         setBudgets(data);
       } else if (response.status === 401) {
         setIsAuthenticated(false);
+      } else if (response.status === 400) {
+        const errorData = await response.json();
+        setErrorMessage(errorData.error || 'Error fetching budgets');
       }
     } catch (error) {
       console.error('Error fetching budgets:', error);
+      setErrorMessage('Error connecting to server');
     }
   };
 
@@ -161,9 +168,13 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
         fetchBudgets();
       } else if (response.status === 401) {
         setIsAuthenticated(false);
+      } else if (response.status === 400) {
+        const errorData = await response.json();
+        setErrorMessage(errorData.error || 'Error creating expense');
       }
     } catch (error) {
       console.error('Error creating expense:', error);
+      setErrorMessage('Error connecting to server');
     }
   };
 
@@ -189,6 +200,16 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
     return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
+  const handleMonthNavigation = (direction) => {
+    const newMonth = new Date(selectedMonth);
+    if (direction === 'prev') {
+      newMonth.setMonth(newMonth.getMonth() - 1);
+    } else {
+      newMonth.setMonth(newMonth.getMonth() + 1);
+    }
+    setSelectedMonth(newMonth);
+  };
+
   return (
     <div className="container">
       <div className="form-container">
@@ -197,7 +218,11 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
             <label>Select Date</label>
             <DatePicker
               selected={formData.expense_date}
-              onChange={(date) => setFormData({ ...formData, expense_date: date })}
+              onChange={(date) => {
+                setFormData({ ...formData, expense_date: date });
+                // Update selected month when date changes via calendar
+                setSelectedMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+              }}
               dateFormat="MMMM d, yyyy"
               inline
               calendarStartDay={0}
@@ -212,7 +237,10 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
                 <div className="custom-header">
                   <button
                     type="button"
-                    onClick={decreaseMonth}
+                    onClick={() => {
+                      decreaseMonth();
+                      handleMonthNavigation('prev');
+                    }}
                     disabled={prevMonthButtonDisabled}
                     className="nav-button"
                   >
@@ -223,7 +251,10 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
                   </span>
                   <button
                     type="button"
-                    onClick={increaseMonth}
+                    onClick={() => {
+                      increaseMonth();
+                      handleMonthNavigation('next');
+                    }}
                     disabled={nextMonthButtonDisabled}
                     className="nav-button"
                   >
@@ -269,6 +300,7 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
             required
           />
           <button type="submit">Add Expense</button>
+          {errorMessage && <p className="error-message">{errorMessage}</p>}
         </form>
       </div>
 
@@ -321,6 +353,7 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
 
 function DetailView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
   const [budgets, setBudgets] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
   const { parentType } = useParams();
   const navigate = useNavigate();
 
@@ -328,11 +361,12 @@ function DetailView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated })
 
   useEffect(() => {
     fetchBudgets();
-  }, []);
+  }, [selectedMonth]);
 
   const fetchBudgets = async () => {
     try {
-      const response = await fetch(`${API_URL}/budgets`, {
+      const monthStr = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`;
+      const response = await fetch(`${API_URL}/budgets?month=${monthStr}`, {
         headers: getAuthHeader()
       });
       if (response.ok) {
@@ -346,6 +380,16 @@ function DetailView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated })
     }
   };
 
+  const handleMonthNavigation = (direction) => {
+    const newMonth = new Date(selectedMonth);
+    if (direction === 'prev') {
+      newMonth.setMonth(newMonth.getMonth() - 1);
+    } else {
+      newMonth.setMonth(newMonth.getMonth() + 1);
+    }
+    setSelectedMonth(newMonth);
+  };
+
   const formatCurrency = (amount) => {
     return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
@@ -357,6 +401,13 @@ function DetailView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated })
       <div className="summary-container">
         <div className="back-button-container">
           <button onClick={() => navigate('/')} className="back-btn">← Back to Summary</button>
+        </div>
+        <div className="month-navigation">
+          <button onClick={() => handleMonthNavigation('prev')} className="nav-button">‹</button>
+          <span className="month-display">
+            {selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+          </span>
+          <button onClick={() => handleMonthNavigation('next')} className="nav-button">›</button>
         </div>
         <div className="summary-cards">
           {categoryBudgets.map(budget => (
@@ -392,6 +443,7 @@ function ExpenseListView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticat
   const [expenses, setExpenses] = useState([]);
   const [categoryName, setCategoryName] = useState('');
   const [parentType, setParentType] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
   const { categoryId } = useParams();
   const navigate = useNavigate();
 
@@ -399,7 +451,7 @@ function ExpenseListView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticat
 
   useEffect(() => {
     fetchExpenses();
-  }, []);
+  }, [selectedMonth]);
 
   const fetchExpenses = async () => {
     try {
@@ -408,11 +460,11 @@ function ExpenseListView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticat
       });
       if (response.ok) {
         const data = await response.json();
-        // Filter expenses for this category and current month
-        const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+        // Filter expenses for this category and selected month
+        const monthStr = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`;
         const filtered = data.filter(exp =>
           exp.category_id === parseInt(categoryId) &&
-          exp.expense_date.startsWith(currentMonth)
+          exp.expense_date.startsWith(monthStr)
         );
         // Sort by date descending (most recent first)
         const sorted = filtered.sort((a, b) => {
@@ -456,6 +508,16 @@ function ExpenseListView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticat
     }
   };
 
+  const handleMonthNavigation = (direction) => {
+    const newMonth = new Date(selectedMonth);
+    if (direction === 'prev') {
+      newMonth.setMonth(newMonth.getMonth() - 1);
+    } else {
+      newMonth.setMonth(newMonth.getMonth() + 1);
+    }
+    setSelectedMonth(newMonth);
+  };
+
   const formatCurrency = (amount) => {
     return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
@@ -472,6 +534,14 @@ function ExpenseListView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticat
       <div className="summary-container">
         <div className="back-button-container">
           <button onClick={() => navigate(`/detail/${parentType}`)} className="back-btn">← Back to {parentType} Categories</button>
+        </div>
+
+        <div className="month-navigation">
+          <button onClick={() => handleMonthNavigation('prev')} className="nav-button">‹</button>
+          <span className="month-display">
+            {selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+          </span>
+          <button onClick={() => handleMonthNavigation('next')} className="nav-button">›</button>
         </div>
 
         <div className="expense-summary">

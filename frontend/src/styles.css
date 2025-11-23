@@ -467,3 +467,24 @@ button:hover {
   color: #333;
   white-space: nowrap;
 }
+
+/* Month Navigation Styles */
+.month-navigation {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.month-display {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #333;
+  min-width: 180px;
+  text-align: center;
+}
