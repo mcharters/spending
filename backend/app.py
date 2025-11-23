@@ -301,20 +301,14 @@ def get_budgets():
 
         return jsonify(budget_status)
 
-    # Handle future months: show projected budgets (best case - zero spending)
+    # Handle future months: show projected budgets with current cumulative balance
     if is_future_month:
         for budget in budgets:
-            # For future months, show the budget assuming zero spending (best case scenario)
-            # The cumulative balance will be what it currently is plus all the monthly budgets
-            # between now and the future month
+            # For future months, the cumulative balance stays the same (carries forward from current month)
+            # The effective budget is: monthly_amount + cumulative_balance
+            # This means surpluses add to next month's budget, deficits reduce it
 
-            # Calculate how many months in the future
-            months_ahead = (requested_month_date.year - datetime.strptime(current_month_str, '%Y-%m').year) * 12 + \
-                          (requested_month_date.month - datetime.strptime(current_month_str, '%Y-%m').month)
-
-            # Project cumulative balance (assuming best case: zero spending each month)
-            projected_cumulative = budget.cumulative_balance + (budget.monthly_amount * months_ahead)
-            projected_effective_budget = budget.monthly_amount + projected_cumulative
+            effective_budget = budget.monthly_amount + budget.cumulative_balance
 
             budget_status.append({
                 'id': budget.id,
@@ -323,11 +317,11 @@ def get_budgets():
                 'parent_type': budget.category.parent_type,
                 'user': budget.user,
                 'monthly_amount': budget.monthly_amount,
-                'cumulative_balance': projected_cumulative,
-                'effective_budget': projected_effective_budget,
+                'cumulative_balance': budget.cumulative_balance,  # Carries forward unchanged
+                'effective_budget': effective_budget,
                 'current_spent': 0,  # Future month, no spending yet
-                'remaining': projected_effective_budget,
-                'is_over_budget': False
+                'remaining': effective_budget,
+                'is_over_budget': effective_budget < 0
             })
 
         return jsonify(budget_status)

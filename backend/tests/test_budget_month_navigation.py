@@ -46,7 +46,7 @@ def test_get_budgets_with_month_parameter_current(client, auth_headers, sample_b
 
 
 def test_get_budgets_future_month(client, auth_headers, sample_budgets, sample_categories):
-    """Test getting budgets for future month (projected, best case scenario)."""
+    """Test getting budgets for future month (cumulative balance carries forward)."""
     # Calculate next month
     next_month = (datetime.utcnow() + relativedelta(months=1)).strftime('%Y-%m')
 
@@ -63,10 +63,10 @@ def test_get_budgets_future_month(client, auth_headers, sample_budgets, sample_c
     # Future month should have zero spending
     assert beauty_budget['current_spent'] == 0
 
-    # Cumulative balance should be projected (current + 1 month of budget)
-    assert beauty_budget['cumulative_balance'] == 100  # 0 (current) + 100 (one month)
-    assert beauty_budget['effective_budget'] == 200  # monthly_amount + cumulative
-    assert beauty_budget['remaining'] == 200
+    # Cumulative balance should carry forward unchanged (0 in this case)
+    assert beauty_budget['cumulative_balance'] == 0
+    assert beauty_budget['effective_budget'] == 100  # monthly_amount (100) + cumulative (0)
+    assert beauty_budget['remaining'] == 100
     assert beauty_budget['is_over_budget'] is False
 
 
@@ -84,9 +84,9 @@ def test_get_budgets_future_month_multiple_months_ahead(client, auth_headers, sa
     beauty_budget = next((b for b in data if b['category'] == 'Beauty'), None)
     assert beauty_budget is not None
 
-    # Cumulative should be 3 months * 100
-    assert beauty_budget['cumulative_balance'] == 300  # 0 + (100 * 3)
-    assert beauty_budget['effective_budget'] == 400  # 100 + 300
+    # Cumulative balance carries forward unchanged
+    assert beauty_budget['cumulative_balance'] == 0
+    assert beauty_budget['effective_budget'] == 100  # 100 + 0
     assert beauty_budget['current_spent'] == 0
 
 
@@ -188,7 +188,7 @@ def test_get_budgets_shared_category_future_month(client, auth_headers, sample_b
     assert groceries_budget['parent_type'] == 'Shared'
     assert groceries_budget['user'] is None
     assert groceries_budget['current_spent'] == 0
-    assert groceries_budget['cumulative_balance'] == 1200  # One month ahead
+    assert groceries_budget['cumulative_balance'] == 0  # Carries forward unchanged
 
 
 def test_get_budgets_different_users_personal_categories(client, auth_headers, sample_categories):
