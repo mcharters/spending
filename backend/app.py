@@ -15,6 +15,8 @@ CORS(app, resources={r"/api/*": {"origins": "*", "allow_headers": ["Content-Type
 auth = HTTPBasicAuth()
 
 # Database configuration
+# DEV SERVER DATABASE: backend/data/database.db (file-based, gitignored)
+# TEST DATABASE: :memory: (in-memory, configured in conftest.py)
 basedir = os.path.abspath(os.path.dirname(__file__))
 datadir = os.path.join(basedir, 'data')
 os.makedirs(datadir, exist_ok=True)  # Ensure data directory exists

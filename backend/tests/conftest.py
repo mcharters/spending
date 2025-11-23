@@ -10,11 +10,16 @@ from models import db, Category, Budget, Expense
 
 @pytest.fixture
 def app():
-    """Create and configure a test Flask application."""
+    """Create and configure a test Flask application.
+
+    IMPORTANT: Tests use an in-memory SQLite database (:memory:) that is
+    completely isolated from the dev server database (backend/data/database.db).
+    Each test gets a fresh database that is created and destroyed automatically.
+    """
     # Set test configuration
     flask_app.config.update({
         'TESTING': True,
-        'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',  # In-memory database
+        'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',  # In-memory test database (isolated from dev)
         'SQLALCHEMY_TRACK_MODIFICATIONS': False,
         'WTF_CSRF_ENABLED': False,
     })

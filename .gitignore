@@ -7,7 +7,11 @@ __pycache__/
 env/
 venv/
 ENV/
+
+# Database files (dev database stored in backend/data/, tests use in-memory)
 backend/data/
+backend/database.db
+backend/*.db
 
 # Environment variables
 .env
