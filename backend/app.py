@@ -162,11 +162,47 @@ def create_expense():
     else:
         expense_date = datetime.utcnow().date()
 
+    # Validate that a budget exists for this category and month
+    expense_month = expense_date.strftime('%Y-%m')
+    current_month = datetime.utcnow().strftime('%Y-%m')
+    category_id = data.get('category_id')
+    username = auth.current_user()
+
+    # Get the category to check if it's personal or shared
+    category = Category.query.get(category_id)
+    if not category:
+        return jsonify({'error': 'Category not found'}), 404
+
+    # Find the budget for this category and month
+    if category.parent_type == 'Personal':
+        budget = Budget.query.filter_by(
+            category_id=category_id,
+            user=username
+        ).first()
+    else:
+        budget = Budget.query.filter_by(
+            category_id=category_id,
+            user=None
+        ).first()
+
+    # If no budget exists, reject expenses for past months
+    if not budget:
+        if expense_month < current_month:
+            return jsonify({
+                'error': f'Cannot add expense to past month {expense_month}. No budget exists for this category.'
+            }), 400
+
+    # If budget exists but hasn't been updated to this month yet, check if it's a past month
+    if budget and budget.last_updated_month < expense_month < current_month:
+        return jsonify({
+            'error': f'Cannot add expense to past month {expense_month}. Budget has not been created for this month.'
+        }), 400
+
     expense = Expense(
         description=data.get('description', ''),
         amount=data.get('amount'),
-        category_id=data.get('category_id'),
-        created_by=auth.current_user(),
+        category_id=category_id,
+        created_by=username,
         expense_date=expense_date
     )
     db.session.add(expense)
@@ -185,7 +221,7 @@ def get_budgets():
     """Get budget status for all categories visible to the authenticated user."""
     from datetime import datetime
     from dateutil.relativedelta import relativedelta
-    from sqlalchemy import func, extract
+    from sqlalchemy import func
 
     username = auth.current_user()
     current_month_str = datetime.utcnow().strftime('%Y-%m')

@@ -17,9 +17,21 @@ class TestExpenseDateFiltering:
     """Test expense filtering by date ranges."""
 
     @pytest.mark.unit
-    def test_create_expense_with_custom_date(self, client, auth_headers, sample_categories):
+    def test_create_expense_with_custom_date(self, app, client, auth_headers, sample_categories):
         """Test creating an expense with a specific date."""
         expense_date = '2025-02-15'
+
+        # Create budget for February to allow the expense
+        with app.app_context():
+            budget = Budget(
+                category_id=sample_categories['Beauty'],
+                user='user1',
+                monthly_amount=100,
+                cumulative_balance=0,
+                last_updated_month='2025-02'
+            )
+            db.session.add(budget)
+            db.session.commit()
 
         response = client.post(
             '/api/expenses',
@@ -56,9 +68,22 @@ class TestExpenseDateFiltering:
         assert data['expense_date'] == future_date
 
     @pytest.mark.unit
-    def test_create_expense_past_date(self, client, auth_headers, sample_categories):
+    def test_create_expense_past_date(self, app, client, auth_headers, sample_categories):
         """Test creating an expense with a past date (e.g., last month)."""
         past_date = (datetime.utcnow() - timedelta(days=40)).strftime('%Y-%m-%d')
+        past_month = (datetime.utcnow() - timedelta(days=40)).strftime('%Y-%m')
+
+        # Create budget for past month to allow the expense
+        with app.app_context():
+            budget = Budget(
+                category_id=sample_categories['Groceries'],
+                user=None,  # Shared category
+                monthly_amount=1200,
+                cumulative_balance=0,
+                last_updated_month=past_month
+            )
+            db.session.add(budget)
+            db.session.commit()
 
         response = client.post(
             '/api/expenses',

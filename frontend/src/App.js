@@ -141,6 +141,7 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMessage(''); // Clear previous errors
     try {
       const response = await fetch(`${API_URL}/expenses`, {
         method: 'POST',
