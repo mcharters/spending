@@ -7,13 +7,17 @@ from dateutil.relativedelta import relativedelta
 from models import db, Budget, Expense
 
 
-def test_get_budgets_current_month_default(client, auth_headers, sample_budgets, sample_categories):
+def test_get_budgets_current_month_default(client, auth_headers, sample_budgets):
     """Test getting budgets for current month (default behavior)."""
     # Create an expense in current month
     with client.application.app_context():
+        # Get the Beauty category ID from the database
+        from models import Category
+        beauty_cat = Category.query.filter_by(name='Beauty').first()
+
         expense = Expense(
             amount=30.00,
-            category_id=sample_categories['Beauty'],
+            category_id=beauty_cat.id,
             created_by='user1',
             expense_date=datetime.utcnow().date()
         )
