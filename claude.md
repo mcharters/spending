@@ -170,10 +170,14 @@ In dev mode, the React dev server proxies `/api` requests to Flask backend.
 
 ### Building for Production
 
+**IMPORTANT**: Frontend changes require rebuilding the production bundle before committing.
+
 ```bash
 cd frontend
 npm run build  # Outputs to backend/static/
 ```
+
+**Note**: The `backend/static/` directory is version controlled and must be committed along with frontend changes for Railway deployment.
 
 Then run Flask which serves both API and static files:
 ```bash
@@ -301,7 +305,9 @@ python app.py            # Start server
 2. Import and use in `App.js` or other components
 3. Keep styling in `styles.css` or create component-specific CSS
 4. **Write tests** in `frontend/src/*.test.js` for rendering and behavior
-5. **Run tests** to verify implementation before committing
+5. **Build production bundle**: `cd frontend && npm run build`
+6. **Run tests** to verify implementation before committing
+7. **Commit `backend/static/`** with your changes
 
 ### Installing New Dependencies
 
@@ -390,14 +396,20 @@ Project developed with Node.js 18+. Check compatibility if using different versi
 ### Pre-Commit Testing Protocol
 
 **REQUIRED BEFORE ANY COMMIT**:
-1. Run backend tests: `cd backend && pytest -v`
-2. Run frontend tests: `cd frontend && npm test -- --watchAll=false`
-3. Verify ALL tests pass (0 failures)
-4. Only commit if tests are green ✅
+1. **If frontend code changed**: Build production bundle
+   - Run: `cd frontend && npm run build`
+   - This outputs to `backend/static/` (committed to git for deployment)
+2. Run backend tests: `cd backend && pytest -v`
+3. Run frontend tests: `cd frontend && npm test -- --watchAll=false`
+4. Verify ALL tests pass (0 failures)
+5. Only commit if tests are green ✅
+6. **Include `backend/static/` in commit** if frontend was rebuilt
 
 Quick test command:
 - Windows: `run-all-tests.bat`
 - Mac/Linux: `./run-all-tests.sh`
+
+**Note**: Frontend build outputs are version controlled for Railway deployment. See `README-DEPLOY.md` for deployment workflow.
 
 ### Test Coverage Areas
 - ✅ Date filtering (current month only)
