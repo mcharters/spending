@@ -283,7 +283,9 @@ python app.py            # Start server
 4. Generate migration: `flask db migrate -m "Add NewModel"`
 5. Review migration file in `backend/migrations/versions/`
 6. Apply migration: `flask db upgrade`
-7. Restart Flask server
+7. **Update test fixtures** in `backend/tests/conftest.py` if needed
+8. **Write tests** for model methods and relationships
+9. Restart Flask server
 
 ### Adding a New API Endpoint
 1. Add route decorator and function in `backend/app.py`
@@ -291,11 +293,15 @@ python app.py            # Start server
 3. Use `auth.current_user()` to get the authenticated username if needed
 4. Use `jsonify()` for JSON responses
 5. Import Flask utilities as needed (`request`, `abort`, etc.)
+6. **Write tests** in `backend/tests/` for success and error cases
+7. **Run tests** to verify implementation before committing
 
 ### Adding a New React Component
 1. Create new `.js` file in `frontend/src/`
 2. Import and use in `App.js` or other components
 3. Keep styling in `styles.css` or create component-specific CSS
+4. **Write tests** in `frontend/src/*.test.js` for rendering and behavior
+5. **Run tests** to verify implementation before committing
 
 ### Installing New Dependencies
 
@@ -360,10 +366,55 @@ Project developed with Node.js 18+. Check compatibility if using different versi
 
 ## Testing
 
-Currently no tests implemented. Consider adding:
-- Backend: pytest with Flask test client
-- Frontend: Jest + React Testing Library
-- Integration: End-to-end tests with Playwright/Cypress
+**CRITICAL**: This project has comprehensive test coverage. Tests MUST be maintained and run before commits.
+
+### Test Infrastructure
+- **Backend**: pytest with Flask test client, freezegun for date mocking
+  - Location: `backend/tests/`
+  - Run: `cd backend && venv/Scripts/activate && pytest`
+  - 11 tests covering date filtering, month boundaries, budget rollover
+- **Frontend**: Jest + React Testing Library
+  - Location: `frontend/src/*.test.js`
+  - Run: `cd frontend && npm test`
+  - 7 tests covering expense filtering, sorting, date utilities
+- **Documentation**: See `TESTING.md` for full testing guide
+
+### Testing Requirements for New Code
+
+**MANDATORY**: When adding new features, you MUST:
+1. Write tests for all new API endpoints (success + error cases)
+2. Write tests for all new React components (rendering + behavior)
+3. Write tests for all new utility functions (edge cases)
+4. Update test fixtures if database models change
+
+### Pre-Commit Testing Protocol
+
+**REQUIRED BEFORE ANY COMMIT**:
+1. Run backend tests: `cd backend && pytest -v`
+2. Run frontend tests: `cd frontend && npm test -- --watchAll=false`
+3. Verify ALL tests pass (0 failures)
+4. Only commit if tests are green ✅
+
+Quick test command:
+- Windows: `run-all-tests.bat`
+- Mac/Linux: `./run-all-tests.sh`
+
+### Test Coverage Areas
+- ✅ Date filtering (current month only)
+- ✅ Expense sorting (newest first)
+- ✅ Future expense handling (accepted but filtered from current view)
+- ✅ Past expense handling (accepted, included in cumulative balance)
+- ✅ Month boundary transitions
+- ✅ Budget rollover (surplus and deficit)
+- ✅ Multi-month cumulative tracking
+- ✅ User permission filtering
+
+### Future Testing Needs
+- E2E tests with Playwright/Cypress
+- Authentication flow tests
+- Form submission tests
+- Error handling tests
+- Performance tests for large datasets
 
 ## Deployment Checklist
 

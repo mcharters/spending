@@ -413,7 +413,13 @@ function ExpenseListView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticat
           exp.category_id === parseInt(categoryId) &&
           exp.expense_date.startsWith(currentMonth)
         );
-        setExpenses(filtered);
+        // Sort by date descending (most recent first)
+        const sorted = filtered.sort((a, b) => {
+          const dateA = new Date(a.expense_date);
+          const dateB = new Date(b.expense_date);
+          return dateB - dateA;
+        });
+        setExpenses(sorted);
 
         // Get category name and parent type from first expense
         if (filtered.length > 0) {

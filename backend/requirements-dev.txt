@@ -1,0 +1,10 @@
+# Development and testing dependencies
+-r requirements.txt
+
+# Testing
+pytest==7.4.3
+pytest-flask==1.3.0
+pytest-mock==3.12.0
+freezegun==1.4.0  # For mocking datetime in tests
+factory-boy==3.3.0  # For creating test data
+coverage==7.3.2  # For test coverage reports

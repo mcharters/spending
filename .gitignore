@@ -33,6 +33,14 @@ build/
 # Claude Code
 .claude/
 
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+coverage/
+*.cover
+.hypothesis/
+
 # OS
 .DS_Store
 Thumbs.db
