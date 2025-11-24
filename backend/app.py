@@ -627,6 +627,58 @@ def create_expense():
 
     return jsonify(expense.to_dict()), 201
 
+@app.route('/api/expenses/<int:expense_id>', methods=['DELETE'])
+@auth.login_required
+def delete_expense(expense_id):
+    from datetime import datetime
+
+    username = auth.current_user()
+    expense = Expense.query.get(expense_id)
+
+    if not expense:
+        return jsonify({'error': 'Expense not found'}), 404
+
+    # Check permission: user can only delete their own expenses
+    if expense.created_by != username:
+        return jsonify({'error': 'You do not have permission to delete this expense'}), 403
+
+    # Get expense details before deletion for snapshot recalculation
+    expense_month = expense.expense_date.strftime('%Y-%m')
+    current_month = datetime.utcnow().strftime('%Y-%m')
+    category_id = expense.category_id
+    category = expense.category
+
+    # Find the budget for this category
+    if category.parent_type == 'Personal':
+        budget = Budget.query.filter_by(
+            category_id=category_id,
+            user=username
+        ).first()
+    else:
+        budget = Budget.query.filter_by(
+            category_id=category_id,
+            user=None
+        ).first()
+
+    # Delete the expense
+    db.session.delete(expense)
+    db.session.commit()
+
+    # If expense was in a past month, recalculate snapshots from that month forward
+    if budget and expense_month < current_month:
+        # Check if a snapshot exists for this month
+        snapshot = MonthlyBudgetSnapshot.query.filter_by(
+            category_id=category_id,
+            user=budget.user,
+            month=expense_month
+        ).first()
+
+        if snapshot:
+            # Snapshot exists, so we need to recalculate from this month forward
+            recalculate_snapshots_from_month(budget, expense_month)
+
+    return jsonify({'message': 'Expense deleted successfully'}), 200
+
 @app.route('/api/categories', methods=['GET'])
 @auth.login_required
 def get_categories():

@@ -512,6 +512,8 @@ function ExpenseListView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticat
   const [expenses, setExpenses] = useState([]);
   const [categoryName, setCategoryName] = useState('');
   const [parentType, setParentType] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { categoryId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -609,6 +611,41 @@ function ExpenseListView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticat
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
+  const handleDeleteClick = (expenseId) => {
+    setDeleteConfirmId(expenseId);
+  };
+
+  const handleDeleteConfirm = async (expenseId) => {
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`${API_URL}/expenses/${expenseId}`, {
+        method: 'DELETE',
+        headers: getAuthHeader()
+      });
+
+      if (response.ok) {
+        // Remove the expense from the list
+        setExpenses(expenses.filter(exp => exp.id !== expenseId));
+        setDeleteConfirmId(null);
+      } else if (response.status === 401) {
+        setIsAuthenticated(false);
+      } else if (response.status === 403) {
+        alert('You do not have permission to delete this expense');
+      } else {
+        alert('Error deleting expense');
+      }
+    } catch (error) {
+      console.error('Error deleting expense:', error);
+      alert('Error connecting to server');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmId(null);
+  };
+
   const totalSpent = expenses.reduce((sum, exp) => sum + exp.amount, 0);
 
   return (
@@ -650,6 +687,32 @@ function ExpenseListView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticat
                   </div>
                 </div>
                 <div className="expense-amount">${formatCurrency(expense.amount)}</div>
+                {deleteConfirmId === expense.id ? (
+                  <div className="expense-actions">
+                    <button
+                      onClick={() => handleDeleteConfirm(expense.id)}
+                      className="delete-confirm-btn"
+                      disabled={isDeleting}
+                    >
+                      {isDeleting ? 'Deleting...' : 'Confirm'}
+                    </button>
+                    <button
+                      onClick={handleDeleteCancel}
+                      className="delete-cancel-btn"
+                      disabled={isDeleting}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleDeleteClick(expense.id)}
+                    className="delete-btn"
+                    title="Delete expense"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             ))}
           </div>

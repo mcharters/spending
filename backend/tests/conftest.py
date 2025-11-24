@@ -61,6 +61,18 @@ def auth_headers():
 
 
 @pytest.fixture
+def auth_headers_user2():
+    """Create Basic Auth headers for user2."""
+    import base64
+
+    def _auth_headers(username='user2', password='password123'):
+        credentials = base64.b64encode(f'{username}:{password}'.encode()).decode()
+        return {'Authorization': f'Basic {credentials}'}
+
+    return _auth_headers
+
+
+@pytest.fixture
 def sample_categories(app):
     """Create sample categories for testing."""
     with app.app_context():
