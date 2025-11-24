@@ -187,11 +187,11 @@ class TestPastMonthValidation:
 
 @freeze_time("2025-03-15")
 class TestBudgetLastUpdatedMonthValidation:
-    """Test validation for budgets that haven't been updated to intermediate months."""
+    """Test validation for budgets with finalized past months."""
 
     @pytest.mark.integration
-    def test_reject_expense_for_intermediate_past_month(self, client, auth_headers, sample_categories):
-        """Test that expenses are rejected for finalized past months."""
+    def test_allow_expense_for_finalized_past_month_and_recalculate(self, client, auth_headers, sample_categories):
+        """Test that expenses can be added to finalized past months and snapshots recalculate."""
         # Budget exists and we'll create a snapshot to finalize February
         with client.application.app_context():
             budget = Budget(
@@ -224,8 +224,16 @@ class TestBudgetLastUpdatedMonthValidation:
             headers=auth_headers()
         )
 
-        assert response.status_code == 400
+        # Should succeed and trigger recalculation
+        assert response.status_code == 201
         data = response.get_json()
-        assert 'error' in data
-        assert 'Cannot add expense to past month' in data['error']
-        assert '2025-02' in data['error']
+        assert data['amount'] == 50.00
+
+        # Verify the snapshot was recalculated
+        with client.application.app_context():
+            feb_snapshot = MonthlyBudgetSnapshot.query.filter_by(
+                category_id=sample_categories['Beauty'],
+                user='user1',
+                month='2025-02'
+            ).first()
+            assert feb_snapshot.actual_spent == 50.00  # Updated from 0

@@ -19,8 +19,8 @@ class TestPastMonthExpenseWithSnapshotUpdates:
     """Test that adding expenses to past months updates all future snapshots."""
 
     @pytest.mark.integration
-    def test_reject_expense_to_finalized_past_month(self, app, client, auth_headers, sample_categories):
-        """Test that expenses cannot be added to finalized past months."""
+    def test_allow_expense_to_finalized_past_month_and_recalculate(self, app, client, auth_headers, sample_categories):
+        """Test that expenses can be added to finalized past months and snapshots are recalculated."""
         with app.app_context():
             # Create budget for Beauty category
             budget = Budget(
@@ -29,6 +29,23 @@ class TestPastMonthExpenseWithSnapshotUpdates:
                 monthly_amount=100
             )
             db.session.add(budget)
+
+            # Create actual expense records that the snapshots represent
+            expenses = [
+                Expense(
+                    amount=50.00,
+                    category_id=sample_categories['Beauty'],
+                    created_by='user1',
+                    expense_date=date(2025, 1, 10)
+                ),
+                Expense(
+                    amount=60.00,
+                    category_id=sample_categories['Beauty'],
+                    created_by='user1',
+                    expense_date=date(2025, 2, 15)
+                )
+            ]
+            db.session.add_all(expenses)
 
             # Create snapshots for January and February (finalized months)
             jan_snapshot = MonthlyBudgetSnapshot(
@@ -52,7 +69,7 @@ class TestPastMonthExpenseWithSnapshotUpdates:
             db.session.add_all([jan_snapshot, feb_snapshot])
             db.session.commit()
 
-        # Try to add expense to January (finalized month)
+        # Add expense to January (finalized month)
         response = client.post(
             '/api/expenses',
             json={
@@ -63,11 +80,29 @@ class TestPastMonthExpenseWithSnapshotUpdates:
             headers=auth_headers()
         )
 
-        # Should be rejected because January is finalized
-        assert response.status_code == 400
+        # Should succeed and trigger recalculation
+        assert response.status_code == 201
         data = response.get_json()
-        assert 'error' in data
-        assert 'finalized' in data['error'].lower()
+        assert data['amount'] == 25.00
+
+        # Verify snapshots were recalculated
+        with app.app_context():
+            # January snapshot should reflect new spending
+            jan_snapshot = MonthlyBudgetSnapshot.query.filter_by(
+                category_id=sample_categories['Beauty'],
+                user='user1',
+                month='2025-01'
+            ).first()
+            assert jan_snapshot.actual_spent == 75.00  # 50 + 25
+
+            # February snapshot should have recalculated carried surplus
+            feb_snapshot = MonthlyBudgetSnapshot.query.filter_by(
+                category_id=sample_categories['Beauty'],
+                user='user1',
+                month='2025-02'
+            ).first()
+            assert feb_snapshot.carried_surplus == 25.00  # Reduced from 50
+            assert feb_snapshot.actual_spent == 60.00  # Unchanged
 
     @pytest.mark.integration
     def test_allow_expense_to_unfinalized_past_month(self, app, client, auth_headers, sample_categories):

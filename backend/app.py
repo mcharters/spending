@@ -136,6 +136,102 @@ def seed_budgets_command():
             print("Budgets already exist, skipping seed")
 
 # Budget helper functions
+def recalculate_snapshots_from_month(budget, start_month_str):
+    """
+    Recalculate all snapshots from a given month forward to current month.
+
+    This is called when an expense is added to a past month that already has
+    a snapshot. It deletes all snapshots from that month forward and recreates
+    them with updated spending data.
+
+    Args:
+        budget: Budget model instance
+        start_month_str: Month to start recalculation from (YYYY-MM)
+    """
+    from datetime import datetime
+    from dateutil.relativedelta import relativedelta
+    from sqlalchemy import func
+
+    current_month_str = datetime.utcnow().strftime('%Y-%m')
+
+    # Don't recalculate if we're at or past current month
+    if start_month_str >= current_month_str:
+        return
+
+    # Delete all snapshots from start_month forward (up to but not including current month)
+    MonthlyBudgetSnapshot.query.filter(
+        MonthlyBudgetSnapshot.category_id == budget.category_id,
+        MonthlyBudgetSnapshot.user == budget.user,
+        MonthlyBudgetSnapshot.month >= start_month_str,
+        MonthlyBudgetSnapshot.month < current_month_str
+    ).delete()
+    db.session.commit()
+
+    # Find the last snapshot before start_month to get the carried balance
+    last_snapshot = MonthlyBudgetSnapshot.query.filter_by(
+        category_id=budget.category_id,
+        user=budget.user
+    ).filter(
+        MonthlyBudgetSnapshot.month < start_month_str
+    ).order_by(MonthlyBudgetSnapshot.month.desc()).first()
+
+    # Start recreating snapshots from start_month
+    start_month_date = datetime.strptime(start_month_str, '%Y-%m')
+    current_month_date = datetime.strptime(current_month_str, '%Y-%m')
+    iter_month = start_month_date
+
+    while iter_month < current_month_date:
+        month_str = iter_month.strftime('%Y-%m')
+
+        # Calculate spending for this month
+        month_start = iter_month.replace(day=1).date()
+        next_month = iter_month + relativedelta(months=1)
+        month_end = next_month.replace(day=1).date()
+
+        if budget.user:
+            # Personal budget
+            month_spent = db.session.query(func.sum(Expense.amount)).filter(
+                Expense.category_id == budget.category_id,
+                Expense.created_by == budget.user,
+                Expense.expense_date >= month_start,
+                Expense.expense_date < month_end
+            ).scalar() or 0
+        else:
+            # Shared budget
+            month_spent = db.session.query(func.sum(Expense.amount)).filter(
+                Expense.category_id == budget.category_id,
+                Expense.expense_date >= month_start,
+                Expense.expense_date < month_end
+            ).scalar() or 0
+
+        # Calculate carried surplus/deficit
+        if last_snapshot:
+            last_balance = (last_snapshot.carried_surplus - last_snapshot.carried_deficit +
+                           last_snapshot.monthly_amount - last_snapshot.actual_spent)
+        else:
+            last_balance = 0
+
+        carried_surplus = max(0, last_balance)
+        carried_deficit = max(0, -last_balance)
+
+        # Create new snapshot
+        snapshot = MonthlyBudgetSnapshot(
+            category_id=budget.category_id,
+            user=budget.user,
+            month=month_str,
+            monthly_amount=budget.monthly_amount,
+            carried_surplus=carried_surplus,
+            carried_deficit=carried_deficit,
+            actual_spent=month_spent
+        )
+        db.session.add(snapshot)
+
+        # Update last_snapshot reference for next iteration
+        last_snapshot = snapshot
+        iter_month = next_month
+
+    db.session.commit()
+
 def finalize_previous_months():
     """
     Finalize any months between the last snapshot and current system month.
@@ -505,20 +601,7 @@ def create_expense():
             'error': f'No budget exists for this category.'
         }), 400
 
-    # Check if trying to add expense to a finalized past month
-    if expense_month < current_month:
-        # Check if snapshot exists for this month
-        snapshot = MonthlyBudgetSnapshot.query.filter_by(
-            category_id=category_id,
-            user=budget.user,
-            month=expense_month
-        ).first()
-
-        if snapshot:
-            return jsonify({
-                'error': f'Cannot add expense to past month {expense_month}. This month has been finalized.'
-            }), 400
-
+    # Create the expense
     expense = Expense(
         description=data.get('description', ''),
         amount=data.get('amount'),
@@ -528,6 +611,20 @@ def create_expense():
     )
     db.session.add(expense)
     db.session.commit()
+
+    # If expense is in a past month, recalculate snapshots from that month forward
+    if expense_month < current_month:
+        # Check if a snapshot exists for this month
+        snapshot = MonthlyBudgetSnapshot.query.filter_by(
+            category_id=category_id,
+            user=budget.user,
+            month=expense_month
+        ).first()
+
+        if snapshot:
+            # Snapshot exists, so we need to recalculate from this month forward
+            recalculate_snapshots_from_month(budget, expense_month)
+
     return jsonify(expense.to_dict()), 201
 
 @app.route('/api/categories', methods=['GET'])
