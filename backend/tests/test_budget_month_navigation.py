@@ -4,7 +4,7 @@ Tests for budget month navigation feature.
 import pytest
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from models import db, Budget, Expense
+from models import db, Budget, Expense, MonthlyBudgetSnapshot
 
 
 def test_get_budgets_current_month_default(client, auth_headers, sample_budgets):
@@ -28,10 +28,12 @@ def test_get_budgets_current_month_default(client, auth_headers, sample_budgets)
     assert response.status_code == 200
 
     data = response.get_json()
-    assert len(data) > 0
+    assert 'categories' in data
+    budgets = data['categories']
+    assert len(budgets) > 0
 
     # Find the Beauty budget
-    beauty_budget = next((b for b in data if b['category'] == 'Beauty'), None)
+    beauty_budget = next((b for b in budgets if b['category'] == 'Beauty'), None)
     assert beauty_budget is not None
     assert beauty_budget['current_spent'] == 30.00
     assert beauty_budget['monthly_amount'] == 100
@@ -46,11 +48,28 @@ def test_get_budgets_with_month_parameter_current(client, auth_headers, sample_b
     assert response.status_code == 200
 
     data = response.get_json()
-    assert len(data) > 0
+    assert 'categories' in data
+    budgets = data['categories']
+    assert len(budgets) > 0
 
 
 def test_get_budgets_future_month(client, auth_headers, sample_budgets, sample_categories):
-    """Test getting budgets for future month with zero cumulative balance."""
+    """Test getting budgets for future month with no carried balance."""
+    # Create a snapshot for current month with full spending to ensure zero balance
+    with client.application.app_context():
+        current_month = datetime.utcnow().strftime('%Y-%m')
+        snapshot = MonthlyBudgetSnapshot(
+            category_id=sample_categories['Beauty'],
+            user='user1',
+            month=current_month,
+            monthly_amount=100,
+            carried_surplus=0,
+            carried_deficit=0,
+            actual_spent=100  # Spend exactly the budget amount for zero carry
+        )
+        db.session.add(snapshot)
+        db.session.commit()
+
     # Calculate next month
     next_month = (datetime.utcnow() + relativedelta(months=1)).strftime('%Y-%m')
 
@@ -58,15 +77,16 @@ def test_get_budgets_future_month(client, auth_headers, sample_budgets, sample_c
     assert response.status_code == 200
 
     data = response.get_json()
-    assert len(data) > 0
+    assert 'categories' in data
+    budgets = data['categories']
+    assert len(budgets) > 0
 
-    # Find the Beauty budget (cumulative balance = 0)
-    beauty_budget = next((b for b in data if b['category'] == 'Beauty'), None)
+    # Find the Beauty budget (no surplus or deficit)
+    beauty_budget = next((b for b in budgets if b['category'] == 'Beauty'), None)
     assert beauty_budget is not None
 
-    # With zero cumulative balance (no surplus or deficit)
+    # With no carried balance (no surplus or deficit)
     assert beauty_budget['current_spent'] == 0
-    assert beauty_budget['cumulative_balance'] == 0
     assert beauty_budget['effective_budget'] == 100  # monthly_amount only
     assert beauty_budget['remaining'] == 100
     assert beauty_budget['is_over_budget'] is False
@@ -77,15 +97,25 @@ def test_get_budgets_future_month_with_surplus(client, auth_headers, sample_cate
     with client.application.app_context():
         current_month = datetime.utcnow().strftime('%Y-%m')
 
-        # Create a budget with positive cumulative balance (surplus)
+        # Create a budget
         budget = Budget(
             category_id=sample_categories['Beauty'],
             user='user1',
-            monthly_amount=100,
-            cumulative_balance=25,  # $25 surplus from previous months
-            last_updated_month=current_month
+            monthly_amount=100
         )
         db.session.add(budget)
+
+        # Create a MonthlyBudgetSnapshot for current month with surplus
+        snapshot = MonthlyBudgetSnapshot(
+            category_id=sample_categories['Beauty'],
+            user='user1',
+            month=current_month,
+            monthly_amount=100,
+            carried_surplus=0,
+            carried_deficit=0,
+            actual_spent=75  # $25 surplus
+        )
+        db.session.add(snapshot)
         db.session.commit()
 
     next_month = (datetime.utcnow() + relativedelta(months=1)).strftime('%Y-%m')
@@ -93,11 +123,12 @@ def test_get_budgets_future_month_with_surplus(client, auth_headers, sample_cate
     assert response.status_code == 200
 
     data = response.get_json()
-    beauty_budget = next((b for b in data if b['category'] == 'Beauty'), None)
+    budgets = data['categories']
+    beauty_budget = next((b for b in budgets if b['category'] == 'Beauty'), None)
     assert beauty_budget is not None
 
     # Surplus: adds to effective budget, no spending shown
-    assert beauty_budget['cumulative_balance'] == 25
+    # API doesn't return carried_surplus, but effective_budget reflects it
     assert beauty_budget['effective_budget'] == 125  # 100 + 25 surplus
     assert beauty_budget['current_spent'] == 0
     assert beauty_budget['remaining'] == 125
@@ -108,15 +139,25 @@ def test_get_budgets_future_month_with_deficit(client, auth_headers, sample_cate
     with client.application.app_context():
         current_month = datetime.utcnow().strftime('%Y-%m')
 
-        # Create a budget with negative cumulative balance (deficit)
+        # Create a budget
         budget = Budget(
             category_id=sample_categories['Clothing'],
             user='user1',
-            monthly_amount=150,
-            cumulative_balance=-40,  # $40 deficit from overspending
-            last_updated_month=current_month
+            monthly_amount=150
         )
         db.session.add(budget)
+
+        # Create a MonthlyBudgetSnapshot for current month with deficit
+        snapshot = MonthlyBudgetSnapshot(
+            category_id=sample_categories['Clothing'],
+            user='user1',
+            month=current_month,
+            monthly_amount=150,
+            carried_surplus=0,
+            carried_deficit=0,
+            actual_spent=190  # $40 deficit from overspending
+        )
+        db.session.add(snapshot)
         db.session.commit()
 
     next_month = (datetime.utcnow() + relativedelta(months=1)).strftime('%Y-%m')
@@ -124,11 +165,12 @@ def test_get_budgets_future_month_with_deficit(client, auth_headers, sample_cate
     assert response.status_code == 200
 
     data = response.get_json()
-    clothing_budget = next((b for b in data if b['category'] == 'Clothing'), None)
+    budgets = data['categories']
+    clothing_budget = next((b for b in budgets if b['category'] == 'Clothing'), None)
     assert clothing_budget is not None
 
     # Deficit: shows as spending, budget stays at monthly amount
-    assert clothing_budget['cumulative_balance'] == -40
+    # API doesn't return carried_deficit, but current_spent reflects it
     assert clothing_budget['effective_budget'] == 150  # monthly_amount unchanged
     assert clothing_budget['current_spent'] == 40  # deficit shows as spending
     assert clothing_budget['remaining'] == 110  # 150 - 40
@@ -143,34 +185,35 @@ def test_get_budgets_past_month_with_budget(client, auth_headers, sample_categor
         budget = Budget(
             category_id=sample_categories['Beauty'],
             user='user1',
-            monthly_amount=100,
-            cumulative_balance=50,  # Had surplus from previous month
-            last_updated_month=last_month
+            monthly_amount=100
         )
         db.session.add(budget)
 
-        # Add expense from last month
-        last_month_date = datetime.utcnow() - relativedelta(months=1)
-        expense = Expense(
-            amount=80.00,
+        # Create a MonthlyBudgetSnapshot for last month
+        snapshot = MonthlyBudgetSnapshot(
             category_id=sample_categories['Beauty'],
-            created_by='user1',
-            expense_date=last_month_date.date()
+            user='user1',
+            month=last_month,
+            monthly_amount=100,
+            carried_surplus=50,  # Had surplus from previous month
+            carried_deficit=0,
+            actual_spent=80.00
         )
-        db.session.add(expense)
+        db.session.add(snapshot)
         db.session.commit()
 
     response = client.get(f'/api/budgets?month={last_month}', headers=auth_headers())
     assert response.status_code == 200
 
     data = response.get_json()
+    budgets = data['categories']
 
     # Should return the budget since it exists
-    beauty_budget = next((b for b in data if b['category'] == 'Beauty'), None)
+    beauty_budget = next((b for b in budgets if b['category'] == 'Beauty'), None)
     assert beauty_budget is not None
     assert beauty_budget['current_spent'] == 80.00
-    assert beauty_budget['cumulative_balance'] == 50
-    assert beauty_budget['effective_budget'] == 150  # 100 + 50
+    # API doesn't return carried_surplus, but effective_budget reflects it
+    assert beauty_budget['effective_budget'] == 150  # 100 + 50 surplus
     assert beauty_budget['remaining'] == 70  # 150 - 80
 
 
@@ -184,10 +227,12 @@ def test_get_budgets_past_month_without_budget(client, auth_headers, sample_budg
     assert response.status_code == 200
 
     data = response.get_json()
+    assert 'categories' in data
+    budgets = data['categories']
 
     # Should return empty or no budgets since they weren't active then
     # Current implementation will skip budgets that weren't active in that month
-    assert isinstance(data, list)
+    assert isinstance(budgets, list)
 
 
 def test_get_budgets_invalid_month_format(client, auth_headers):
@@ -217,44 +262,55 @@ def test_get_budgets_invalid_month_format_variations(client, auth_headers):
         assert response.status_code in [200, 400]
 
 
-def test_get_budgets_shared_category_future_month(client, auth_headers, sample_budgets):
+def test_get_budgets_shared_category_future_month(client, auth_headers, sample_budgets, sample_categories):
     """Test that shared category budgets work correctly for future months."""
+    # Create a snapshot for current month with full spending to ensure zero balance
+    with client.application.app_context():
+        current_month = datetime.utcnow().strftime('%Y-%m')
+        snapshot = MonthlyBudgetSnapshot(
+            category_id=sample_categories['Groceries'],
+            user=None,  # Shared
+            month=current_month,
+            monthly_amount=1200,
+            carried_surplus=0,
+            carried_deficit=0,
+            actual_spent=1200  # Spend exactly the budget amount for zero carry
+        )
+        db.session.add(snapshot)
+        db.session.commit()
+
     next_month = (datetime.utcnow() + relativedelta(months=1)).strftime('%Y-%m')
 
     response = client.get(f'/api/budgets?month={next_month}', headers=auth_headers())
     assert response.status_code == 200
 
     data = response.get_json()
+    budgets = data['categories']
 
     # Find the Groceries budget (shared)
-    groceries_budget = next((b for b in data if b['category'] == 'Groceries'), None)
+    groceries_budget = next((b for b in budgets if b['category'] == 'Groceries'), None)
     assert groceries_budget is not None
     assert groceries_budget['parent_type'] == 'Shared'
     assert groceries_budget['user'] is None
     assert groceries_budget['current_spent'] == 0
-    assert groceries_budget['cumulative_balance'] == 0  # Carries forward unchanged
+    # No carried balance means effective_budget equals monthly_amount
+    assert groceries_budget['effective_budget'] == groceries_budget['monthly_amount']
 
 
 def test_get_budgets_different_users_personal_categories(client, auth_headers, sample_categories):
     """Test that different users see only their personal category budgets."""
     with client.application.app_context():
-        current_month = datetime.utcnow().strftime('%Y-%m')
-
         # Create budgets for both users
         budgets = [
             Budget(
                 category_id=sample_categories['Beauty'],
                 user='user1',
-                monthly_amount=100,
-                cumulative_balance=0,
-                last_updated_month=current_month
+                monthly_amount=100
             ),
             Budget(
                 category_id=sample_categories['Beauty'],
                 user='user2',
-                monthly_amount=200,
-                cumulative_balance=0,
-                last_updated_month=current_month
+                monthly_amount=200
             ),
         ]
         db.session.add_all(budgets)
@@ -264,7 +320,8 @@ def test_get_budgets_different_users_personal_categories(client, auth_headers, s
     response = client.get('/api/budgets', headers=auth_headers('user1'))
     assert response.status_code == 200
     data = response.get_json()
-    user1_beauty = next((b for b in data if b['category'] == 'Beauty'), None)
+    budgets_list = data['categories']
+    user1_beauty = next((b for b in budgets_list if b['category'] == 'Beauty'), None)
     assert user1_beauty is not None
     assert user1_beauty['monthly_amount'] == 100
 
@@ -272,6 +329,7 @@ def test_get_budgets_different_users_personal_categories(client, auth_headers, s
     response = client.get('/api/budgets', headers=auth_headers('user2'))
     assert response.status_code == 200
     data = response.get_json()
-    user2_beauty = next((b for b in data if b['category'] == 'Beauty'), None)
+    budgets_list = data['categories']
+    user2_beauty = next((b for b in budgets_list if b['category'] == 'Beauty'), None)
     assert user2_beauty is not None
     assert user2_beauty['monthly_amount'] == 200

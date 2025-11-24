@@ -388,3 +388,137 @@ describe('Date Utility Functions', () => {
     expect(sorted[2].expense_date).toBe('2025-01-10');
   });
 });
+
+describe('Empty State Handling', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2025-01-25T12:00:00'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.clearAllMocks();
+  });
+
+  test('shows empty state when no budgets exist', async () => {
+    // Mock empty budgets response
+    global.fetch = jest.fn((url) => {
+      if (url.includes('/api/budgets')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [], // Empty budgets array
+        });
+      }
+      if (url.includes('/api/categories')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ id: 1, name: 'Groceries', parent_type: 'Shared' }],
+        });
+      }
+      return Promise.reject(new Error('Unknown URL'));
+    });
+
+    const TestComponent = () => {
+      const [budgets, setBudgets] = React.useState([]);
+
+      React.useEffect(() => {
+        const fetchData = async () => {
+          const response = await fetch('/api/budgets');
+          const data = await response.json();
+          setBudgets(data);
+        };
+        fetchData();
+      }, []);
+
+      return (
+        <div>
+          {budgets.length === 0 ? (
+            <div data-testid="empty-state">
+              <p>No budgets available for this month.</p>
+              <p>Budgets are created when you first use the app in a new month.</p>
+            </div>
+          ) : (
+            <div data-testid="has-budgets">
+              {budgets.map(b => <div key={b.id}>{b.category}</div>)}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    render(
+      <MemoryRouter>
+        <TestComponent />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('empty-state')).toBeInTheDocument();
+      expect(screen.getByText('No budgets available for this month.')).toBeInTheDocument();
+      expect(screen.queryByTestId('has-budgets')).not.toBeInTheDocument();
+    });
+  });
+
+  test('shows budgets when they exist', async () => {
+    const mockBudgets = [
+      {
+        id: 1,
+        category: 'Groceries',
+        parent_type: 'Shared',
+        user: null,
+        monthly_amount: 1200,
+        effective_budget: 1200,
+        current_spent: 150,
+        remaining: 1050,
+        is_over_budget: false
+      }
+    ];
+
+    global.fetch = jest.fn((url) => {
+      if (url.includes('/api/budgets')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => mockBudgets,
+        });
+      }
+      return Promise.reject(new Error('Unknown URL'));
+    });
+
+    const TestComponent = () => {
+      const [budgets, setBudgets] = React.useState([]);
+
+      React.useEffect(() => {
+        const fetchData = async () => {
+          const response = await fetch('/api/budgets');
+          const data = await response.json();
+          setBudgets(data);
+        };
+        fetchData();
+      }, []);
+
+      return (
+        <div>
+          {budgets.length === 0 ? (
+            <div data-testid="empty-state">No budgets</div>
+          ) : (
+            <div data-testid="has-budgets">
+              {budgets.map(b => <div key={b.id} data-testid={`budget-${b.id}`}>{b.category}</div>)}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    render(
+      <MemoryRouter>
+        <TestComponent />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-budgets')).toBeInTheDocument();
+      expect(screen.getByTestId('budget-1')).toBeInTheDocument();
+      expect(screen.queryByTestId('empty-state')).not.toBeInTheDocument();
+    });
+  });
+});

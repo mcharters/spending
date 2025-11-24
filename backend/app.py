@@ -5,7 +5,7 @@ from flask_httpauth import HTTPBasicAuth
 from werkzeug.security import check_password_hash
 import os
 from dotenv import load_dotenv
-from models import db, Expense, Category, Budget
+from models import db, Expense, Category, Budget, MonthlyBudgetSnapshot
 
 # Load environment variables
 load_dotenv()
@@ -84,8 +84,6 @@ def seed_budgets():
     """Seed initial budgets for all categories."""
     from datetime import datetime
 
-    current_month = datetime.utcnow().strftime('%Y-%m')
-
     # TODO: Customize these budget amounts before running seed-budgets command
     # Format: (category_name, monthly_amount, user)
     # user=None for Shared categories, user='user1' or 'user2' for Personal categories
@@ -120,15 +118,13 @@ def seed_budgets():
             budget = Budget(
                 category_id=category.id,
                 user=user,
-                monthly_amount=monthly_amount,
-                cumulative_balance=0,
-                last_updated_month=current_month
+                monthly_amount=monthly_amount
             )
             budgets.append(budget)
 
     db.session.add_all(budgets)
     db.session.commit()
-    print(f"Seeded {len(budgets)} budgets for current month {current_month}")
+    print(f"Seeded {len(budgets)} budgets")
 
 @app.cli.command('seed-budgets')
 def seed_budgets_command():
@@ -138,6 +134,322 @@ def seed_budgets_command():
             seed_budgets()
         else:
             print("Budgets already exist, skipping seed")
+
+# Budget helper functions
+def finalize_previous_months():
+    """
+    Finalize any months between the last snapshot and current system month.
+    Called on first API request after month boundary.
+    """
+    from datetime import datetime
+    from dateutil.relativedelta import relativedelta
+    from sqlalchemy import func
+
+    current_month_str = datetime.utcnow().strftime('%Y-%m')
+
+    # Get all budgets
+    budgets = Budget.query.all()
+
+    for budget in budgets:
+        # Find the last snapshot for this budget
+        last_snapshot = MonthlyBudgetSnapshot.query.filter_by(
+            category_id=budget.category_id,
+            user=budget.user
+        ).order_by(MonthlyBudgetSnapshot.month.desc()).first()
+
+        if last_snapshot:
+            # Check if there are months to finalize between last snapshot and now
+            last_month = datetime.strptime(last_snapshot.month, '%Y-%m')
+            current_month = datetime.strptime(current_month_str, '%Y-%m')
+
+            # Start from the month after the last snapshot
+            iter_month = last_month + relativedelta(months=1)
+
+            while iter_month < current_month:
+                month_str = iter_month.strftime('%Y-%m')
+
+                # Check if snapshot already exists for this month
+                existing = MonthlyBudgetSnapshot.query.filter_by(
+                    category_id=budget.category_id,
+                    user=budget.user,
+                    month=month_str
+                ).first()
+
+                if not existing:
+                    # Calculate spending for this month
+                    month_start = iter_month.replace(day=1).date()
+                    next_month = iter_month + relativedelta(months=1)
+                    month_end = next_month.replace(day=1).date()
+
+                    if budget.user:
+                        # Personal budget
+                        month_spent = db.session.query(func.sum(Expense.amount)).filter(
+                            Expense.category_id == budget.category_id,
+                            Expense.created_by == budget.user,
+                            Expense.expense_date >= month_start,
+                            Expense.expense_date < month_end
+                        ).scalar() or 0
+                    else:
+                        # Shared budget
+                        month_spent = db.session.query(func.sum(Expense.amount)).filter(
+                            Expense.category_id == budget.category_id,
+                            Expense.expense_date >= month_start,
+                            Expense.expense_date < month_end
+                        ).scalar() or 0
+
+                    # Calculate carried surplus/deficit from last snapshot
+                    last_balance = (last_snapshot.carried_surplus - last_snapshot.carried_deficit +
+                                    last_snapshot.monthly_amount - last_snapshot.actual_spent)
+
+                    carried_surplus = max(0, last_balance)
+                    carried_deficit = max(0, -last_balance)
+
+                    # Create snapshot
+                    snapshot = MonthlyBudgetSnapshot(
+                        category_id=budget.category_id,
+                        user=budget.user,
+                        month=month_str,
+                        monthly_amount=budget.monthly_amount,
+                        carried_surplus=carried_surplus,
+                        carried_deficit=carried_deficit,
+                        actual_spent=month_spent
+                    )
+                    db.session.add(snapshot)
+
+                    # Update last_snapshot reference for next iteration
+                    last_snapshot = snapshot
+
+                iter_month = next_month
+        else:
+            # No snapshots exist yet - this is the first month with expenses
+            # We don't need to create snapshots until a month has passed
+            pass
+
+    db.session.commit()
+
+def get_budget_status_for_month(budget, target_month_str, current_month_str):
+    """
+    Calculate budget status for a given month (past, current, or future).
+
+    Args:
+        budget: Budget model instance
+        target_month_str: Month to calculate for (YYYY-MM)
+        current_month_str: Current system month (YYYY-MM)
+
+    Returns:
+        Dictionary with budget status
+    """
+    from datetime import datetime
+    from dateutil.relativedelta import relativedelta
+    from sqlalchemy import func
+
+    target_month_date = datetime.strptime(target_month_str, '%Y-%m')
+    current_month_date = datetime.strptime(current_month_str, '%Y-%m')
+
+    is_past = target_month_str < current_month_str
+    is_current = target_month_str == current_month_str
+    is_future = target_month_str > current_month_str
+
+    if is_past:
+        # Past month: return snapshot if it exists
+        snapshot = MonthlyBudgetSnapshot.query.filter_by(
+            category_id=budget.category_id,
+            user=budget.user,
+            month=target_month_str
+        ).first()
+
+        if not snapshot:
+            # No snapshot for this month means no budget existed then
+            return None
+
+        # Apply display rules: surplus increases budget, deficit shows as spending
+        if snapshot.carried_surplus > 0:
+            effective_budget = snapshot.monthly_amount + snapshot.carried_surplus
+            displayed_spent = snapshot.actual_spent
+        else:
+            effective_budget = snapshot.monthly_amount
+            displayed_spent = snapshot.actual_spent + snapshot.carried_deficit
+
+        remaining = effective_budget - displayed_spent
+
+        return {
+            'id': budget.id,
+            'category_id': budget.category_id,
+            'category': budget.category.name,
+            'parent_type': budget.category.parent_type,
+            'user': budget.user,
+            'monthly_amount': snapshot.monthly_amount,
+            'effective_budget': effective_budget,
+            'current_spent': displayed_spent,
+            'remaining': remaining,
+            'is_over_budget': remaining < 0
+        }
+
+    # For current and future months, we need to project
+    # Find the last finalized snapshot
+    last_snapshot = MonthlyBudgetSnapshot.query.filter_by(
+        category_id=budget.category_id,
+        user=budget.user
+    ).order_by(MonthlyBudgetSnapshot.month.desc()).first()
+
+    if last_snapshot:
+        # Start with balance from last snapshot
+        running_balance = (last_snapshot.carried_surplus - last_snapshot.carried_deficit +
+                          last_snapshot.monthly_amount - last_snapshot.actual_spent)
+
+        # Calculate through intermediate months up to (but not including) target month
+        iter_month = datetime.strptime(last_snapshot.month, '%Y-%m') + relativedelta(months=1)
+
+        while iter_month < target_month_date:
+            month_str = iter_month.strftime('%Y-%m')
+
+            # Check if this is the current month
+            if month_str == current_month_str:
+                # Add current month's spending
+                month_start = iter_month.replace(day=1).date()
+                current_date = datetime.utcnow().date()
+
+                if budget.user:
+                    month_spent = db.session.query(func.sum(Expense.amount)).filter(
+                        Expense.category_id == budget.category_id,
+                        Expense.created_by == budget.user,
+                        Expense.expense_date >= month_start,
+                        Expense.expense_date <= current_date
+                    ).scalar() or 0
+                else:
+                    month_spent = db.session.query(func.sum(Expense.amount)).filter(
+                        Expense.category_id == budget.category_id,
+                        Expense.expense_date >= month_start,
+                        Expense.expense_date <= current_date
+                    ).scalar() or 0
+
+                running_balance += budget.monthly_amount - month_spent
+            else:
+                # Future intermediate month: assume zero spending
+                running_balance += budget.monthly_amount
+
+            iter_month += relativedelta(months=1)
+    else:
+        # No snapshots yet - start with zero balance
+        running_balance = 0
+
+        # For future months, we need to calculate current month's balance first
+        if is_future:
+            # Calculate current month's spending
+            month_start = current_month_date.replace(day=1).date()
+            current_date = datetime.utcnow().date()
+
+            if budget.user:
+                month_spent = db.session.query(func.sum(Expense.amount)).filter(
+                    Expense.category_id == budget.category_id,
+                    Expense.created_by == budget.user,
+                    Expense.expense_date >= month_start,
+                    Expense.expense_date <= current_date
+                ).scalar() or 0
+            else:
+                month_spent = db.session.query(func.sum(Expense.amount)).filter(
+                    Expense.category_id == budget.category_id,
+                    Expense.expense_date >= month_start,
+                    Expense.expense_date <= current_date
+                ).scalar() or 0
+
+            # Calculate current month's projected ending balance
+            running_balance = budget.monthly_amount - month_spent
+
+            # For each month between current and target, add the monthly budget
+            # (assuming zero spending in those future months)
+            months_between = (target_month_date.year - current_month_date.year) * 12 + \
+                           (target_month_date.month - current_month_date.month) - 1
+            running_balance += budget.monthly_amount * months_between
+
+            # IMPORTANT: running_balance now represents the balance carried INTO the target month
+            # (i.e., the ending balance of the month before the target)
+        elif is_current:
+            # Calculate current month's spending
+            month_start = current_month_date.replace(day=1).date()
+            current_date = datetime.utcnow().date()
+
+            if budget.user:
+                month_spent = db.session.query(func.sum(Expense.amount)).filter(
+                    Expense.category_id == budget.category_id,
+                    Expense.created_by == budget.user,
+                    Expense.expense_date >= month_start,
+                    Expense.expense_date <= current_date
+                ).scalar() or 0
+            else:
+                month_spent = db.session.query(func.sum(Expense.amount)).filter(
+                    Expense.category_id == budget.category_id,
+                    Expense.expense_date >= month_start,
+                    Expense.expense_date <= current_date
+                ).scalar() or 0
+
+            running_balance = budget.monthly_amount - month_spent
+
+    # Now calculate display for target month
+    if is_current:
+        # Current month: show actual spending
+        month_start = current_month_date.replace(day=1).date()
+        current_date = datetime.utcnow().date()
+
+        if budget.user:
+            current_spent = db.session.query(func.sum(Expense.amount)).filter(
+                Expense.category_id == budget.category_id,
+                Expense.created_by == budget.user,
+                Expense.expense_date >= month_start,
+                Expense.expense_date <= current_date
+            ).scalar() or 0
+        else:
+            current_spent = db.session.query(func.sum(Expense.amount)).filter(
+                Expense.category_id == budget.category_id,
+                Expense.expense_date >= month_start,
+                Expense.expense_date <= current_date
+            ).scalar() or 0
+
+        # Calculate starting balance for this month (from previous month's end)
+        if last_snapshot:
+            starting_balance = (last_snapshot.carried_surplus - last_snapshot.carried_deficit +
+                               last_snapshot.monthly_amount - last_snapshot.actual_spent)
+        else:
+            starting_balance = 0
+
+        # Apply display rules
+        if starting_balance >= 0:
+            effective_budget = budget.monthly_amount + starting_balance
+            displayed_spent = current_spent
+        else:
+            effective_budget = budget.monthly_amount
+            displayed_spent = current_spent + abs(starting_balance)
+
+        remaining = effective_budget - displayed_spent
+
+    else:  # is_future
+        # Future month: assume zero spending in target month
+        # running_balance represents the balance carried INTO this month
+
+        # Apply display rules
+        if running_balance >= 0:
+            # Surplus: add to effective budget
+            effective_budget = budget.monthly_amount + running_balance
+            displayed_spent = 0
+        else:
+            # Deficit: show as already spent
+            effective_budget = budget.monthly_amount
+            displayed_spent = abs(running_balance)
+
+        remaining = effective_budget - displayed_spent
+
+    return {
+        'id': budget.id,
+        'category_id': budget.category_id,
+        'category': budget.category.name,
+        'parent_type': budget.category.parent_type,
+        'user': budget.user,
+        'monthly_amount': budget.monthly_amount,
+        'effective_budget': effective_budget,
+        'current_spent': displayed_spent,
+        'remaining': remaining,
+        'is_over_budget': remaining < 0
+    }
 
 # API Routes
 @app.route('/api/expenses', methods=['GET'])
@@ -164,7 +476,7 @@ def create_expense():
     else:
         expense_date = datetime.utcnow().date()
 
-    # Validate that a budget exists for this category and month
+    # Validate that a budget exists for this category
     expense_month = expense_date.strftime('%Y-%m')
     current_month = datetime.utcnow().strftime('%Y-%m')
     category_id = data.get('category_id')
@@ -175,7 +487,7 @@ def create_expense():
     if not category:
         return jsonify({'error': 'Category not found'}), 404
 
-    # Find the budget for this category and month
+    # Find the budget for this category
     if category.parent_type == 'Personal':
         budget = Budget.query.filter_by(
             category_id=category_id,
@@ -187,18 +499,25 @@ def create_expense():
             user=None
         ).first()
 
-    # If no budget exists, reject expenses for past months
+    # If no budget exists, reject the expense
     if not budget:
-        if expense_month < current_month:
-            return jsonify({
-                'error': f'Cannot add expense to past month {expense_month}. No budget exists for this category.'
-            }), 400
-
-    # If budget exists but hasn't been updated to this month yet, check if it's a past month
-    if budget and budget.last_updated_month < expense_month < current_month:
         return jsonify({
-            'error': f'Cannot add expense to past month {expense_month}. Budget has not been created for this month.'
+            'error': f'No budget exists for this category.'
         }), 400
+
+    # Check if trying to add expense to a finalized past month
+    if expense_month < current_month:
+        # Check if snapshot exists for this month
+        snapshot = MonthlyBudgetSnapshot.query.filter_by(
+            category_id=category_id,
+            user=budget.user,
+            month=expense_month
+        ).first()
+
+        if snapshot:
+            return jsonify({
+                'error': f'Cannot add expense to past month {expense_month}. This month has been finalized.'
+            }), 400
 
     expense = Expense(
         description=data.get('description', ''),
@@ -226,27 +545,22 @@ def get_budgets():
         month (optional): Month in YYYY-MM format. Defaults to current month.
     """
     from datetime import datetime
-    from dateutil.relativedelta import relativedelta
-    from sqlalchemy import func
     from flask import request
 
     username = auth.current_user()
     current_month_str = datetime.utcnow().strftime('%Y-%m')
-    current_date = datetime.utcnow().date()
+
+    # Finalize previous months on first API call after month boundary
+    finalize_previous_months()
 
     # Get optional month query parameter
     requested_month = request.args.get('month', current_month_str)
 
     # Validate month format
     try:
-        requested_month_date = datetime.strptime(requested_month, '%Y-%m')
+        datetime.strptime(requested_month, '%Y-%m')
     except ValueError:
         return jsonify({'error': f'Invalid month format: {requested_month}. Expected YYYY-MM'}), 400
-
-    requested_month_str = requested_month_date.strftime('%Y-%m')
-    is_current_month = requested_month_str == current_month_str
-    is_future_month = requested_month_str > current_month_str
-    is_past_month = requested_month_str < current_month_str
 
     # Get budgets for current user (Personal categories) and Shared categories
     budgets = Budget.query.join(Category).filter(
@@ -255,171 +569,95 @@ def get_budgets():
 
     budget_status = []
 
-    # Handle past months: only return budgets that already exist, don't create new ones
-    if is_past_month:
-        # For past months, we only show budgets if they were actually used in that month
-        # Check if budgets have been updated to at least this month
-        for budget in budgets:
-            # Skip budgets that weren't active in the requested month
-            if budget.last_updated_month < requested_month_str:
-                continue
+    for budget in budgets:
+        status = get_budget_status_for_month(budget, requested_month, current_month_str)
+        if status:  # None means no snapshot exists for past month
+            budget_status.append(status)
 
-            # Calculate spending for the requested past month
-            month_start = requested_month_date.replace(day=1).date()
-            next_month = requested_month_date + relativedelta(months=1)
-            month_end = next_month.replace(day=1).date()
+    # Calculate aggregate summaries for Personal and Shared with asymmetric surplus/deficit rules
+    personal_budgets = [b for b in budget_status if b['user'] is not None]
+    shared_budgets = [b for b in budget_status if b['user'] is None]
 
-            if budget.user:
-                # Personal budget
-                month_spent = db.session.query(func.sum(Expense.amount)).filter(
-                    Expense.category_id == budget.category_id,
-                    Expense.created_by == budget.user,
-                    Expense.expense_date >= month_start,
-                    Expense.expense_date < month_end
-                ).scalar() or 0
+    is_current_month = requested_month == current_month_str
+    is_past_month = requested_month < current_month_str
+    is_future_month = requested_month > current_month_str
+
+    def calculate_aggregate_summary(category_budgets):
+        """Calculate aggregate summary with asymmetric surplus/deficit rules."""
+        if not category_budgets:
+            return None
+
+        # Sum up base monthly budgets (before any surplus/deficit adjustments)
+        total_base_budget = sum(b['monthly_amount'] for b in category_budgets)
+
+        if is_current_month:
+            # Current month: Show actual total spending (no asymmetric rules at aggregate level)
+            # We need to reverse-engineer the actual spending from the per-category displayed values
+            # For categories: if they have deficit carried in, current_spent includes that deficit
+            # We need to get the true spending by looking at the remaining values
+            total_actual_spending = total_base_budget - sum(b['remaining'] for b in category_budgets)
+
+            return {
+                'base_budget': total_base_budget,
+                'effective_budget': total_base_budget,
+                'spent': total_actual_spending,
+                'remaining': total_base_budget - total_actual_spending,
+                'is_over_budget': total_actual_spending > total_base_budget
+            }
+        elif is_past_month:
+            # Past month: Show historical data with asymmetric display
+            # effective_budget already includes carried surplus
+            # current_spent already includes carried deficit
+            total_effective_budget = sum(b['effective_budget'] for b in category_budgets)
+            total_displayed_spent = sum(b['current_spent'] for b in category_budgets)
+            total_remaining = sum(b['remaining'] for b in category_budgets)
+
+            return {
+                'base_budget': total_base_budget,
+                'effective_budget': total_effective_budget,
+                'spent': total_displayed_spent,
+                'remaining': total_remaining,
+                'is_over_budget': total_remaining < 0
+            }
+        else:
+            # Future month: Apply asymmetric rules at the aggregate level
+            # Calculate the true net balance from base budget
+            # remaining = effective_budget - displayed_spent
+            # For surplus: effective_budget = monthly_amount + surplus, displayed_spent = 0
+            #   so: remaining = monthly_amount + surplus, thus: net_balance = remaining - monthly_amount
+            # For deficit: effective_budget = monthly_amount, displayed_spent = deficit
+            #   so: remaining = monthly_amount - deficit, thus: net_balance = remaining - monthly_amount
+            # In both cases: net_balance = remaining - monthly_amount
+            net_balance = sum(b['remaining'] - b['monthly_amount'] for b in category_budgets)
+
+            # Apply asymmetric rules at the aggregate level
+            if net_balance >= 0:
+                # Surplus: add to effective budget, show actual spending as 0 for future months
+                effective_budget = total_base_budget + net_balance
+                displayed_spent = 0
+                remaining = effective_budget  # Same as net_balance + total_base_budget
             else:
-                # Shared budget
-                month_spent = db.session.query(func.sum(Expense.amount)).filter(
-                    Expense.category_id == budget.category_id,
-                    Expense.expense_date >= month_start,
-                    Expense.expense_date < month_end
-                ).scalar() or 0
+                # Deficit: keep base budget, show deficit as spending
+                effective_budget = total_base_budget
+                displayed_spent = abs(net_balance)
+                remaining = effective_budget - displayed_spent  # Positive value showing what's left
 
-            # For past months, we need to calculate what the cumulative balance was at that time
-            # We'll show the budget as it was in that month
-            budget_status.append({
-                'id': budget.id,
-                'category_id': budget.category_id,
-                'category': budget.category.name,
-                'parent_type': budget.category.parent_type,
-                'user': budget.user,
-                'monthly_amount': budget.monthly_amount,
-                'cumulative_balance': budget.cumulative_balance,  # Historical value
-                'effective_budget': budget.monthly_amount + budget.cumulative_balance,
-                'current_spent': month_spent,
-                'remaining': budget.monthly_amount + budget.cumulative_balance - month_spent,
-                'is_over_budget': (budget.monthly_amount + budget.cumulative_balance - month_spent) < 0
-            })
-
-        return jsonify(budget_status)
-
-    # Handle future months: show projected budgets with asymmetric surplus/deficit handling
-    if is_future_month:
-        for budget in budgets:
-            # For future months:
-            # - Surpluses (positive cumulative balance) increase the effective budget
-            # - Deficits (negative cumulative balance) show as spending in the next month
-
-            if budget.cumulative_balance >= 0:
-                # Surplus: add to effective budget
-                effective_budget = budget.monthly_amount + budget.cumulative_balance
-                current_spent = 0
-            else:
-                # Deficit: show as spending, budget stays at monthly amount
-                effective_budget = budget.monthly_amount
-                current_spent = abs(budget.cumulative_balance)  # Convert deficit to positive spending
-
-            remaining = effective_budget - current_spent
-
-            budget_status.append({
-                'id': budget.id,
-                'category_id': budget.category_id,
-                'category': budget.category.name,
-                'parent_type': budget.category.parent_type,
-                'user': budget.user,
-                'monthly_amount': budget.monthly_amount,
-                'cumulative_balance': budget.cumulative_balance,  # Keep for reference
+            return {
+                'base_budget': total_base_budget,
                 'effective_budget': effective_budget,
-                'current_spent': current_spent,
+                'spent': displayed_spent,
                 'remaining': remaining,
                 'is_over_budget': remaining < 0
-            })
+            }
 
-        return jsonify(budget_status)
+    personal_summary = calculate_aggregate_summary(personal_budgets)
+    shared_summary = calculate_aggregate_summary(shared_budgets)
 
-    # Handle current month (existing logic)
-    for budget in budgets:
-        # Update budget if we've crossed into a new month
-        if budget.last_updated_month != current_month_str:
-            # Calculate how many months have elapsed
-            last_updated = datetime.strptime(budget.last_updated_month, '%Y-%m')
-            current_month_date = datetime.strptime(current_month_str, '%Y-%m')
-
-            # Process each elapsed month
-            temp_date = last_updated
-            while temp_date < current_month_date:
-                month_str = temp_date.strftime('%Y-%m')
-
-                # Get spending for that month
-                month_start = temp_date.replace(day=1).date()
-                next_month = temp_date + relativedelta(months=1)
-                month_end = next_month.replace(day=1).date()
-
-                # Query expenses for this budget in this month
-                if budget.user:
-                    # Personal budget: only expenses by this user
-                    spent = db.session.query(func.sum(Expense.amount)).filter(
-                        Expense.category_id == budget.category_id,
-                        Expense.created_by == budget.user,
-                        Expense.expense_date >= month_start,
-                        Expense.expense_date < month_end
-                    ).scalar() or 0
-                else:
-                    # Shared budget: all expenses in this category
-                    spent = db.session.query(func.sum(Expense.amount)).filter(
-                        Expense.category_id == budget.category_id,
-                        Expense.expense_date >= month_start,
-                        Expense.expense_date < month_end
-                    ).scalar() or 0
-
-                # Add to cumulative balance: (budget - spent)
-                budget.cumulative_balance += (budget.monthly_amount - spent)
-
-                # Move to next month
-                temp_date = next_month
-
-            # Update last_updated_month
-            budget.last_updated_month = current_month_str
-            db.session.commit()
-
-        # Calculate current month's spending
-        month_start = datetime.strptime(current_month_str, '%Y-%m').replace(day=1).date()
-
-        if budget.user:
-            # Personal budget
-            current_spent = db.session.query(func.sum(Expense.amount)).filter(
-                Expense.category_id == budget.category_id,
-                Expense.created_by == budget.user,
-                Expense.expense_date >= month_start,
-                Expense.expense_date <= current_date
-            ).scalar() or 0
-        else:
-            # Shared budget
-            current_spent = db.session.query(func.sum(Expense.amount)).filter(
-                Expense.category_id == budget.category_id,
-                Expense.expense_date >= month_start,
-                Expense.expense_date <= current_date
-            ).scalar() or 0
-
-        # Calculate effective budget for current month
-        effective_budget = budget.monthly_amount + budget.cumulative_balance
-        remaining = effective_budget - current_spent
-
-        budget_status.append({
-            'id': budget.id,
-            'category_id': budget.category_id,
-            'category': budget.category.name,
-            'parent_type': budget.category.parent_type,
-            'user': budget.user,
-            'monthly_amount': budget.monthly_amount,
-            'cumulative_balance': budget.cumulative_balance,
-            'effective_budget': effective_budget,
-            'current_spent': current_spent,
-            'remaining': remaining,
-            'is_over_budget': remaining < 0
-        })
-
-    return jsonify(budget_status)
+    return jsonify({
+        'categories': budget_status,
+        'personal_summary': personal_summary,
+        'shared_summary': shared_summary
+    })
 
 # Serve React App
 @app.route('/', defaults={'path': ''})

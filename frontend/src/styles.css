@@ -410,6 +410,29 @@ button:hover {
   font-size: 1rem;
 }
 
+.empty-state {
+  text-align: center;
+  color: #666;
+  padding: 40px 20px;
+  font-size: 1rem;
+}
+
+.empty-state p {
+  margin-bottom: 10px;
+}
+
+.empty-state p:first-child {
+  font-weight: 500;
+  color: #555;
+  font-size: 1.1rem;
+}
+
+.empty-state p:last-child {
+  font-style: italic;
+  color: #888;
+  font-size: 0.95rem;
+}
+
 .expense-list {
   display: flex;
   flex-direction: column;

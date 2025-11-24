@@ -5,7 +5,7 @@ import pytest
 import os
 from datetime import datetime
 from app import app as flask_app
-from models import db, Category, Budget, Expense
+from models import db, Category, Budget, Expense, MonthlyBudgetSnapshot
 
 
 @pytest.fixture
@@ -81,29 +81,21 @@ def sample_categories(app):
 def sample_budgets(app, sample_categories):
     """Create sample budgets for testing."""
     with app.app_context():
-        current_month = datetime.utcnow().strftime('%Y-%m')
-
         budgets = [
             Budget(
                 category_id=sample_categories['Beauty'],
                 user='user1',
-                monthly_amount=100,
-                cumulative_balance=0,
-                last_updated_month=current_month
+                monthly_amount=100
             ),
             Budget(
                 category_id=sample_categories['Clothing'],
                 user='user1',
-                monthly_amount=150,
-                cumulative_balance=0,
-                last_updated_month=current_month
+                monthly_amount=150
             ),
             Budget(
                 category_id=sample_categories['Groceries'],
                 user=None,  # Shared
-                monthly_amount=1200,
-                cumulative_balance=0,
-                last_updated_month=current_month
+                monthly_amount=1200
             ),
         ]
         db.session.add_all(budgets)

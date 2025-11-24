@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, useNavigate, useParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 
@@ -92,8 +92,9 @@ function AuthWrapper() {
 
 function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
   const [budgets, setBudgets] = useState([]);
+  const [personalSummary, setPersonalSummary] = useState(null);
+  const [sharedSummary, setSharedSummary] = useState(null);
   const [categories, setCategories] = useState([]);
-  const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [errorMessage, setErrorMessage] = useState('');
   const [formData, setFormData] = useState({
     amount: '',
@@ -101,12 +102,31 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
     expense_date: new Date()
   });
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Get month from URL parameter, or default to current month
+  const monthParam = searchParams.get('month');
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    if (monthParam) {
+      const [year, month] = monthParam.split('-');
+      return new Date(parseInt(year), parseInt(month) - 1, 1);
+    }
+    return new Date();
+  });
 
   const API_URL = apiUrl;
 
   useEffect(() => {
     fetchBudgets();
     fetchCategories();
+  }, [selectedMonth]);
+
+  // Sync datepicker with selected month from URL
+  useEffect(() => {
+    setFormData(prev => ({
+      ...prev,
+      expense_date: new Date(selectedMonth)
+    }));
   }, [selectedMonth]);
 
   const fetchBudgets = async () => {
@@ -117,7 +137,9 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
       });
       if (response.ok) {
         const data = await response.json();
-        setBudgets(data);
+        setBudgets(data.categories || []);
+        setPersonalSummary(data.personal_summary);
+        setSharedSummary(data.shared_summary);
       } else if (response.status === 401) {
         setIsAuthenticated(false);
       } else if (response.status === 400) {
@@ -188,13 +210,14 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
   const personalBudgets = budgets.filter(b => b.user !== null);
   const sharedBudgets = budgets.filter(b => b.user === null);
 
-  const personalTotalBudget = personalBudgets.reduce((sum, b) => sum + b.effective_budget, 0);
-  const personalTotalSpent = personalBudgets.reduce((sum, b) => sum + b.current_spent, 0);
-  const personalRemaining = personalBudgets.reduce((sum, b) => sum + b.remaining, 0);
+  // Use aggregate summaries from backend instead of summing category values
+  const personalTotalBudget = personalSummary?.effective_budget || 0;
+  const personalTotalSpent = personalSummary?.spent || 0;
+  const personalRemaining = personalSummary?.remaining || 0;
 
-  const sharedTotalBudget = sharedBudgets.reduce((sum, b) => sum + b.effective_budget, 0);
-  const sharedTotalSpent = sharedBudgets.reduce((sum, b) => sum + b.current_spent, 0);
-  const sharedRemaining = sharedBudgets.reduce((sum, b) => sum + b.remaining, 0);
+  const sharedTotalBudget = sharedSummary?.effective_budget || 0;
+  const sharedTotalSpent = sharedSummary?.spent || 0;
+  const sharedRemaining = sharedSummary?.remaining || 0;
 
   const formatCurrency = (amount) => {
     return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -208,6 +231,9 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
       newMonth.setMonth(newMonth.getMonth() + 1);
     }
     setSelectedMonth(newMonth);
+    // Update URL parameter
+    const monthStr = `${newMonth.getFullYear()}-${String(newMonth.getMonth() + 1).padStart(2, '0')}`;
+    navigate(`/?month=${monthStr}`, { replace: true });
   };
 
   return (
@@ -305,43 +331,60 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
       </div>
 
       <div className="summary-container">
-        <div className="summary-cards">
-          <div className="summary-card clickable" onClick={() => navigate('/detail/Personal')}>
-            <h3>Personal Spending</h3>
-            <div className="summary-amount">
-              <span className="spent">${formatCurrency(personalTotalSpent)}</span>
-              <span className="separator"> / </span>
-              <span className="budget">${formatCurrency(personalTotalBudget)}</span>
-            </div>
-            <div className={`remaining ${personalRemaining < 0 ? 'over-budget' : ''}`}>
-              {personalRemaining < 0 ? 'Over by' : 'Remaining'}: ${formatCurrency(Math.abs(personalRemaining))}
-            </div>
-            <div className="progress-bar">
-              <div
-                className={`progress-fill ${personalRemaining < 0 ? 'over-budget' : ''}`}
-                style={{ width: `${Math.min((personalTotalSpent / personalTotalBudget) * 100, 100)}%` }}
-              ></div>
-            </div>
+        {budgets.length === 0 ? (
+          <div className="empty-state">
+            <p>No budgets available for this month.</p>
+            <p>Budgets are created when you first use the app in a new month.</p>
           </div>
+        ) : (
+          <div className="summary-cards">
+            {personalBudgets.length > 0 && (
+              <div className="summary-card clickable" onClick={() => {
+                const monthStr = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`;
+                navigate(`/detail/Personal?month=${monthStr}`);
+              }}>
+                <h3>Personal Spending</h3>
+                <div className="summary-amount">
+                  <span className="spent">${formatCurrency(personalTotalSpent)}</span>
+                  <span className="separator"> / </span>
+                  <span className="budget">${formatCurrency(personalTotalBudget)}</span>
+                </div>
+                <div className={`remaining ${personalRemaining < 0 ? 'over-budget' : ''}`}>
+                  {personalRemaining < 0 ? 'Over by' : 'Remaining'}: ${formatCurrency(Math.abs(personalRemaining))}
+                </div>
+                <div className="progress-bar">
+                  <div
+                    className={`progress-fill ${personalRemaining < 0 ? 'over-budget' : ''}`}
+                    style={{ width: `${Math.min((personalTotalSpent / personalTotalBudget) * 100, 100)}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
 
-          <div className="summary-card clickable" onClick={() => navigate('/detail/Shared')}>
-            <h3>Shared Spending</h3>
-            <div className="summary-amount">
-              <span className="spent">${formatCurrency(sharedTotalSpent)}</span>
-              <span className="separator"> / </span>
-              <span className="budget">${formatCurrency(sharedTotalBudget)}</span>
-            </div>
-            <div className={`remaining ${sharedRemaining < 0 ? 'over-budget' : ''}`}>
-              {sharedRemaining < 0 ? 'Over by' : 'Remaining'}: ${formatCurrency(Math.abs(sharedRemaining))}
-            </div>
-            <div className="progress-bar">
-              <div
-                className={`progress-fill ${sharedRemaining < 0 ? 'over-budget' : ''}`}
-                style={{ width: `${Math.min((sharedTotalSpent / sharedTotalBudget) * 100, 100)}%` }}
-              ></div>
-            </div>
+            {sharedBudgets.length > 0 && (
+              <div className="summary-card clickable" onClick={() => {
+                const monthStr = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`;
+                navigate(`/detail/Shared?month=${monthStr}`);
+              }}>
+                <h3>Shared Spending</h3>
+                <div className="summary-amount">
+                  <span className="spent">${formatCurrency(sharedTotalSpent)}</span>
+                  <span className="separator"> / </span>
+                  <span className="budget">${formatCurrency(sharedTotalBudget)}</span>
+                </div>
+                <div className={`remaining ${sharedRemaining < 0 ? 'over-budget' : ''}`}>
+                  {sharedRemaining < 0 ? 'Over by' : 'Remaining'}: ${formatCurrency(Math.abs(sharedRemaining))}
+                </div>
+                <div className="progress-bar">
+                  <div
+                    className={`progress-fill ${sharedRemaining < 0 ? 'over-budget' : ''}`}
+                    style={{ width: `${Math.min((sharedTotalSpent / sharedTotalBudget) * 100, 100)}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        )}
       </div>
 
       <footer className="footer">
@@ -353,9 +396,19 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
 
 function DetailView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
   const [budgets, setBudgets] = useState([]);
-  const [selectedMonth, setSelectedMonth] = useState(new Date());
   const { parentType } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  // Get month from URL parameter, or default to current month
+  const monthParam = searchParams.get('month');
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    if (monthParam) {
+      const [year, month] = monthParam.split('-');
+      return new Date(parseInt(year), parseInt(month) - 1, 1);
+    }
+    return new Date();
+  });
 
   const API_URL = apiUrl;
 
@@ -371,7 +424,7 @@ function DetailView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated })
       });
       if (response.ok) {
         const data = await response.json();
-        setBudgets(data);
+        setBudgets(data.categories || []);
       } else if (response.status === 401) {
         setIsAuthenticated(false);
       }
@@ -388,6 +441,9 @@ function DetailView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated })
       newMonth.setMonth(newMonth.getMonth() + 1);
     }
     setSelectedMonth(newMonth);
+    // Update URL parameter
+    const monthStr = `${newMonth.getFullYear()}-${String(newMonth.getMonth() + 1).padStart(2, '0')}`;
+    navigate(`/detail/${parentType}?month=${monthStr}`, { replace: true });
   };
 
   const formatCurrency = (amount) => {
@@ -400,7 +456,10 @@ function DetailView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated })
     <div className="container">
       <div className="summary-container">
         <div className="back-button-container">
-          <button onClick={() => navigate('/')} className="back-btn">← Back to Summary</button>
+          <button onClick={() => {
+            const monthStr = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`;
+            navigate(`/?month=${monthStr}`);
+          }} className="back-btn">← Back to Summary</button>
         </div>
         <div className="month-navigation">
           <button onClick={() => handleMonthNavigation('prev')} className="nav-button">‹</button>
@@ -409,27 +468,37 @@ function DetailView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated })
           </span>
           <button onClick={() => handleMonthNavigation('next')} className="nav-button">›</button>
         </div>
-        <div className="summary-cards">
-          {categoryBudgets.map(budget => (
-            <div key={budget.id} className="summary-card clickable" onClick={() => navigate(`/expenses/${budget.category_id}`)}>
-              <h3>{budget.category}</h3>
-              <div className="summary-amount">
-                <span className="spent">${formatCurrency(budget.current_spent)}</span>
-                <span className="separator"> / </span>
-                <span className="budget">${formatCurrency(budget.effective_budget)}</span>
+        {categoryBudgets.length === 0 ? (
+          <div className="empty-state">
+            <p>No {parentType.toLowerCase()} budgets available for this month.</p>
+            <p>Budgets are created when you first use the app in a new month.</p>
+          </div>
+        ) : (
+          <div className="summary-cards">
+            {categoryBudgets.map(budget => {
+              const monthStr = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`;
+              return (
+              <div key={budget.id} className="summary-card clickable" onClick={() => navigate(`/expenses/${budget.category_id}?month=${monthStr}`)}>
+                <h3>{budget.category}</h3>
+                <div className="summary-amount">
+                  <span className="spent">${formatCurrency(budget.current_spent)}</span>
+                  <span className="separator"> / </span>
+                  <span className="budget">${formatCurrency(budget.effective_budget)}</span>
+                </div>
+                <div className={`remaining ${budget.remaining < 0 ? 'over-budget' : ''}`}>
+                  {budget.remaining < 0 ? 'Over by' : 'Remaining'}: ${formatCurrency(Math.abs(budget.remaining))}
+                </div>
+                <div className="progress-bar">
+                  <div
+                    className={`progress-fill ${budget.remaining < 0 ? 'over-budget' : ''}`}
+                    style={{ width: `${Math.min((budget.current_spent / budget.effective_budget) * 100, 100)}%` }}
+                  ></div>
+                </div>
               </div>
-              <div className={`remaining ${budget.remaining < 0 ? 'over-budget' : ''}`}>
-                {budget.remaining < 0 ? 'Over by' : 'Remaining'}: ${formatCurrency(Math.abs(budget.remaining))}
-              </div>
-              <div className="progress-bar">
-                <div
-                  className={`progress-fill ${budget.remaining < 0 ? 'over-budget' : ''}`}
-                  style={{ width: `${Math.min((budget.current_spent / budget.effective_budget) * 100, 100)}%` }}
-                ></div>
-              </div>
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <footer className="footer">
@@ -443,9 +512,19 @@ function ExpenseListView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticat
   const [expenses, setExpenses] = useState([]);
   const [categoryName, setCategoryName] = useState('');
   const [parentType, setParentType] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState(new Date());
   const { categoryId } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  // Get month from URL parameter, or default to current month
+  const monthParam = searchParams.get('month');
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    if (monthParam) {
+      const [year, month] = monthParam.split('-');
+      return new Date(parseInt(year), parseInt(month) - 1, 1);
+    }
+    return new Date();
+  });
 
   const API_URL = apiUrl;
 
@@ -516,6 +595,9 @@ function ExpenseListView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticat
       newMonth.setMonth(newMonth.getMonth() + 1);
     }
     setSelectedMonth(newMonth);
+    // Update URL parameter
+    const monthStr = `${newMonth.getFullYear()}-${String(newMonth.getMonth() + 1).padStart(2, '0')}`;
+    navigate(`/expenses/${categoryId}?month=${monthStr}`, { replace: true });
   };
 
   const formatCurrency = (amount) => {
@@ -533,7 +615,10 @@ function ExpenseListView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticat
     <div className="container">
       <div className="summary-container">
         <div className="back-button-container">
-          <button onClick={() => navigate(`/detail/${parentType}`)} className="back-btn">← Back to {parentType} Categories</button>
+          <button onClick={() => {
+            const monthStr = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`;
+            navigate(`/detail/${parentType}?month=${monthStr}`);
+          }} className="back-btn">← Back to {parentType} Categories</button>
         </div>
 
         <div className="month-navigation">

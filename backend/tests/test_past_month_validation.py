@@ -9,7 +9,7 @@ These tests verify that the application correctly:
 import pytest
 from datetime import datetime
 from freezegun import freeze_time
-from models import db, Budget, Category
+from models import db, Budget, Category, MonthlyBudgetSnapshot
 
 
 @freeze_time("2025-02-15")
@@ -24,9 +24,7 @@ class TestPastMonthValidation:
             budget = Budget(
                 category_id=sample_categories['Beauty'],
                 user='user1',
-                monthly_amount=100,
-                cumulative_balance=0,
-                last_updated_month='2025-02'
+                monthly_amount=100
             )
             db.session.add(budget)
             db.session.commit()
@@ -48,6 +46,16 @@ class TestPastMonthValidation:
     @pytest.mark.integration
     def test_allow_expense_for_future_month(self, client, auth_headers, sample_categories):
         """Test that expenses for future months are allowed."""
+        # Need to create a budget first (app requires budget to exist for any expense)
+        with client.application.app_context():
+            budget = Budget(
+                category_id=sample_categories['Beauty'],
+                user='user1',
+                monthly_amount=100
+            )
+            db.session.add(budget)
+            db.session.commit()
+
         response = client.post(
             '/api/expenses',
             json={
@@ -80,8 +88,8 @@ class TestPastMonthValidation:
         assert response.status_code == 400
         data = response.get_json()
         assert 'error' in data
-        assert 'Cannot add expense to past month' in data['error']
-        assert '2025-01' in data['error']
+        # Error message will be "No budget exists" when no budget is found
+        assert 'No budget exists' in data['error']
 
     @pytest.mark.integration
     def test_allow_expense_for_past_month_with_budget(self, client, auth_headers, sample_categories):
@@ -91,9 +99,7 @@ class TestPastMonthValidation:
             budget = Budget(
                 category_id=sample_categories['Beauty'],
                 user='user1',
-                monthly_amount=100,
-                cumulative_balance=0,
-                last_updated_month='2025-01'
+                monthly_amount=100
             )
             db.session.add(budget)
             db.session.commit()
@@ -130,7 +136,8 @@ class TestPastMonthValidation:
         assert response.status_code == 400
         data = response.get_json()
         assert 'error' in data
-        assert 'Cannot add expense to past month' in data['error']
+        # Error message will be "No budget exists" when no budget is found
+        assert 'No budget exists' in data['error']
 
     @pytest.mark.integration
     def test_allow_expense_for_shared_category_past_month_with_budget(self, client, auth_headers, sample_categories):
@@ -140,9 +147,7 @@ class TestPastMonthValidation:
             budget = Budget(
                 category_id=sample_categories['Groceries'],
                 user=None,  # Shared
-                monthly_amount=1200,
-                cumulative_balance=0,
-                last_updated_month='2025-01'
+                monthly_amount=1200
             )
             db.session.add(budget)
             db.session.commit()
@@ -186,17 +191,27 @@ class TestBudgetLastUpdatedMonthValidation:
 
     @pytest.mark.integration
     def test_reject_expense_for_intermediate_past_month(self, client, auth_headers, sample_categories):
-        """Test that expenses are rejected for past months between last_updated and current."""
-        # Budget last updated in January, now in March, trying to add February expense
+        """Test that expenses are rejected for finalized past months."""
+        # Budget exists and we'll create a snapshot to finalize February
         with client.application.app_context():
             budget = Budget(
                 category_id=sample_categories['Beauty'],
                 user='user1',
-                monthly_amount=100,
-                cumulative_balance=0,
-                last_updated_month='2025-01'
+                monthly_amount=100
             )
             db.session.add(budget)
+
+            # Create a snapshot for February to finalize it
+            snapshot = MonthlyBudgetSnapshot(
+                category_id=sample_categories['Beauty'],
+                user='user1',
+                month='2025-02',
+                monthly_amount=100,
+                carried_surplus=0,
+                carried_deficit=0,
+                actual_spent=0
+            )
+            db.session.add(snapshot)
             db.session.commit()
 
         response = client.post(

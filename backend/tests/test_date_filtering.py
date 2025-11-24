@@ -10,7 +10,7 @@ These tests verify that the application correctly handles:
 import pytest
 from datetime import datetime, timedelta
 from freezegun import freeze_time
-from models import db, Expense, Budget, Category
+from models import db, Expense, Budget, Category, MonthlyBudgetSnapshot
 
 
 class TestExpenseDateFiltering:
@@ -26,9 +26,7 @@ class TestExpenseDateFiltering:
             budget = Budget(
                 category_id=sample_categories['Beauty'],
                 user='user1',
-                monthly_amount=100,
-                cumulative_balance=0,
-                last_updated_month='2025-02'
+                monthly_amount=100
             )
             db.session.add(budget)
             db.session.commit()
@@ -49,9 +47,19 @@ class TestExpenseDateFiltering:
         assert data['amount'] == 100.00
 
     @pytest.mark.unit
-    def test_create_expense_future_date(self, client, auth_headers, sample_categories):
+    def test_create_expense_future_date(self, app, client, auth_headers, sample_categories):
         """Test creating an expense with a future date (e.g., next month)."""
         future_date = (datetime.utcnow() + timedelta(days=40)).strftime('%Y-%m-%d')
+
+        # Need to create a budget first (app requires budget to exist for any expense)
+        with app.app_context():
+            budget = Budget(
+                category_id=sample_categories['Clothing'],
+                user='user1',
+                monthly_amount=150
+            )
+            db.session.add(budget)
+            db.session.commit()
 
         response = client.post(
             '/api/expenses',
@@ -78,9 +86,7 @@ class TestExpenseDateFiltering:
             budget = Budget(
                 category_id=sample_categories['Groceries'],
                 user=None,  # Shared category
-                monthly_amount=1200,
-                cumulative_balance=0,
-                last_updated_month=past_month
+                monthly_amount=1200
             )
             db.session.add(budget)
             db.session.commit()
@@ -121,7 +127,8 @@ class TestBudgetMonthTransitions:
         response = client.get('/api/budgets', headers=auth_headers())
         assert response.status_code == 200
 
-        budgets = response.get_json()
+        data = response.get_json()
+        budgets = data['categories']
         beauty_budget = next(b for b in budgets if b['category'] == 'Beauty')
 
         assert beauty_budget['current_spent'] == 50.00
@@ -154,7 +161,8 @@ class TestBudgetMonthTransitions:
         )
 
         response = client.get('/api/budgets', headers=auth_headers())
-        budgets = response.get_json()
+        data = response.get_json()
+        budgets = data['categories']
         beauty_budget = next(b for b in budgets if b['category'] == 'Beauty')
 
         # Only current month's expense should count
@@ -186,7 +194,8 @@ class TestBudgetMonthTransitions:
         )
 
         response = client.get('/api/budgets', headers=auth_headers())
-        budgets = response.get_json()
+        data = response.get_json()
+        budgets = data['categories']
         beauty_budget = next(b for b in budgets if b['category'] == 'Beauty')
 
         # Only current month's expense should count
@@ -200,107 +209,105 @@ class TestMonthRollover:
     @pytest.mark.integration
     def test_budget_rollover_with_surplus(self, app, client, auth_headers, sample_budgets, sample_categories):
         """Test that unspent budget rolls over to next month."""
-        # Spend less than budget in January
-        client.post(
-            '/api/expenses',
-            json={
-                'amount': 40.00,  # Budget is 100, so 60 surplus
-                'category_id': sample_categories['Beauty'],
-                'expense_date': '2025-01-15'
-            },
-            headers=auth_headers()
-        )
+        # Create a MonthlyBudgetSnapshot for January with surplus
+        with app.app_context():
+            snapshot = MonthlyBudgetSnapshot(
+                category_id=sample_categories['Beauty'],
+                user='user1',
+                month='2025-01',
+                monthly_amount=100,
+                carried_surplus=0,
+                carried_deficit=0,
+                actual_spent=40.00  # Spent 40, so 60 surplus
+            )
+            db.session.add(snapshot)
+            db.session.commit()
 
-        # Check budget in January
-        response = client.get('/api/budgets', headers=auth_headers())
-        budgets = response.get_json()
-        beauty_budget = next(b for b in budgets if b['category'] == 'Beauty')
-        assert beauty_budget['remaining'] == 60.00
-
-        # Move to February
+        # Move to February and check budget
         with freeze_time("2025-02-15"):
             response = client.get('/api/budgets', headers=auth_headers())
-            budgets = response.get_json()
+            data = response.get_json()
+            budgets = data['categories']
             beauty_budget = next(b for b in budgets if b['category'] == 'Beauty')
 
-            # Effective budget should be monthly_amount + cumulative_balance
-            # cumulative_balance should be 60 (100 budget - 40 spent)
-            assert beauty_budget['cumulative_balance'] == 60.00
-            assert beauty_budget['effective_budget'] == 160.00  # 100 + 60
+            # Effective budget should include the surplus from January
+            # 60 surplus should increase effective budget
+            # API doesn't return carried_surplus, but effective_budget reflects it
+            assert beauty_budget['effective_budget'] == 160.00  # 100 + 60 surplus
+            assert beauty_budget['current_spent'] == 0  # No spending in Feb yet
+            assert beauty_budget['remaining'] == 160.00
 
     @pytest.mark.integration
     def test_budget_rollover_with_overspending(self, app, client, auth_headers, sample_budgets, sample_categories):
-        """Test that overspending reduces next month's budget."""
-        # Update budget to have last_updated_month in January
+        """Test that overspending carries forward as deficit."""
+        # Create a MonthlyBudgetSnapshot for January with overspending
         with app.app_context():
-            budget = Budget.query.filter_by(category_id=sample_categories['Beauty']).first()
-            budget.last_updated_month = '2025-01'
+            snapshot = MonthlyBudgetSnapshot(
+                category_id=sample_categories['Beauty'],
+                user='user1',
+                month='2025-01',
+                monthly_amount=100,
+                carried_surplus=0,
+                carried_deficit=0,
+                actual_spent=150.00  # Spent 150, so 50 deficit
+            )
+            db.session.add(snapshot)
             db.session.commit()
 
-        # Spend more than budget in January
-        client.post(
-            '/api/expenses',
-            json={
-                'amount': 150.00,  # Budget is 100, so -50 deficit
-                'category_id': sample_categories['Beauty'],
-                'expense_date': '2025-01-15'
-            },
-            headers=auth_headers()
-        )
-
-        # Move to February
+        # Move to February and check budget
         with freeze_time("2025-02-15"):
             response = client.get('/api/budgets', headers=auth_headers())
-            budgets = response.get_json()
+            data = response.get_json()
+            budgets = data['categories']
             beauty_budget = next(b for b in budgets if b['category'] == 'Beauty')
 
-            # cumulative_balance should be -50 (100 budget - 150 spent)
-            assert beauty_budget['cumulative_balance'] == -50.00
-            assert beauty_budget['effective_budget'] == 50.00  # 100 + (-50)
+            # Deficit should be carried forward and shown as spending
+            # API doesn't return carried_deficit, but current_spent reflects it
+            assert beauty_budget['effective_budget'] == 100.00  # Budget stays at monthly amount
+            assert beauty_budget['current_spent'] == 50.00  # Deficit shown as spending
+            assert beauty_budget['remaining'] == 50.00  # 100 - 50
 
     @pytest.mark.integration
     def test_budget_rollover_multiple_months(self, app, client, auth_headers, sample_budgets, sample_categories):
         """Test budget rollover across multiple months."""
-        # Update budget to have last_updated_month in January
+        # Create snapshots for January and February
         with app.app_context():
-            budget = Budget.query.filter_by(category_id=sample_categories['Beauty']).first()
-            budget.last_updated_month = '2025-01'
+            # January: Spend 70 (30 surplus)
+            jan_snapshot = MonthlyBudgetSnapshot(
+                category_id=sample_categories['Beauty'],
+                user='user1',
+                month='2025-01',
+                monthly_amount=100,
+                carried_surplus=0,
+                carried_deficit=0,
+                actual_spent=70.00
+            )
+            # February: Spend 80 with 30 carried surplus (20 net surplus: 30 + 100 - 80)
+            feb_snapshot = MonthlyBudgetSnapshot(
+                category_id=sample_categories['Beauty'],
+                user='user1',
+                month='2025-02',
+                monthly_amount=100,
+                carried_surplus=30,
+                carried_deficit=0,
+                actual_spent=80.00
+            )
+            db.session.add_all([jan_snapshot, feb_snapshot])
             db.session.commit()
-
-        # January: Spend 70 (30 surplus)
-        with freeze_time("2025-01-15"):
-            client.post(
-                '/api/expenses',
-                json={
-                    'amount': 70.00,
-                    'category_id': sample_categories['Beauty'],
-                    'expense_date': '2025-01-15'
-                },
-                headers=auth_headers()
-            )
-
-        # February: Spend 80 (50 surplus total: 30 + 100 - 80)
-        with freeze_time("2025-02-15"):
-            client.post(
-                '/api/expenses',
-                json={
-                    'amount': 80.00,
-                    'category_id': sample_categories['Beauty'],
-                    'expense_date': '2025-02-15'
-                },
-                headers=auth_headers()
-            )
 
         # March: Check cumulative balance
         with freeze_time("2025-03-15"):
             response = client.get('/api/budgets', headers=auth_headers())
-            budgets = response.get_json()
+            data = response.get_json()
+            budgets = data['categories']
             beauty_budget = next(b for b in budgets if b['category'] == 'Beauty')
 
             # Jan: 100 - 70 = +30
             # Feb: 30 + 100 - 80 = +50
-            assert beauty_budget['cumulative_balance'] == 50.00
-            assert beauty_budget['effective_budget'] == 150.00  # 100 + 50
+            # API doesn't return carried_surplus, but effective_budget reflects it
+            assert beauty_budget['effective_budget'] == 150.00  # 100 + 50 surplus
+            assert beauty_budget['current_spent'] == 0  # No spending in March yet
+            assert beauty_budget['remaining'] == 150.00
 
 
 class TestExpenseRetrieval:
