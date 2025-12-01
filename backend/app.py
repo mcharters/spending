@@ -191,6 +191,49 @@ def show_recent_command():
 
         print("\n" + "="*80)
 
+@app.cli.command('finalize-snapshots')
+def finalize_snapshots_command():
+    """
+    Manually trigger snapshot finalization for all past months.
+    Run this after the fix to create missing November 2025 snapshots.
+    """
+    with app.app_context():
+        from datetime import datetime
+        current_month = datetime.utcnow().strftime('%Y-%m')
+
+        print("\n" + "="*80)
+        print(f"Finalizing snapshots for all past months (current month: {current_month})")
+        print("="*80)
+
+        # Count snapshots before
+        before_count = MonthlyBudgetSnapshot.query.count()
+        print(f"Snapshots before: {before_count}")
+
+        # Run the finalization
+        finalize_previous_months()
+
+        # Count snapshots after
+        after_count = MonthlyBudgetSnapshot.query.count()
+        print(f"Snapshots after: {after_count}")
+        print(f"Created {after_count - before_count} new snapshots")
+
+        # Show what was created
+        if after_count > before_count:
+            print("\n" + "="*80)
+            print("Newly created snapshots:")
+            print("="*80)
+            snapshots = MonthlyBudgetSnapshot.query.order_by(MonthlyBudgetSnapshot.month.desc()).all()
+            if snapshots:
+                print(f"{'Month':<10} {'Category':<15} {'User':<10} {'Budget':<10} {'Spent':<10} {'Surplus':<10} {'Deficit':<10}")
+                print("-"*80)
+                for snap in snapshots:
+                    user_str = snap.user if snap.user else "(Shared)"
+                    print(f"{snap.month:<10} {snap.category.name:<15} {user_str:<10} ${snap.monthly_amount:<9.2f} ${snap.actual_spent:<9.2f} ${snap.carried_surplus:<9.2f} ${snap.carried_deficit:<9.2f}")
+
+        print("\n" + "="*80)
+        print("Finalization complete!")
+        print("="*80)
+
 # Budget helper functions
 def recalculate_snapshots_from_month(budget, start_month_str):
     """
@@ -373,9 +416,78 @@ def finalize_previous_months():
 
                 iter_month = next_month
         else:
-            # No snapshots exist yet - this is the first month with expenses
-            # We don't need to create snapshots until a month has passed
-            pass
+            # No snapshots exist yet - find the earliest expense for this budget
+            # and create snapshots from that month up to (but not including) current month
+            current_month = datetime.strptime(current_month_str, '%Y-%m')
+
+            if budget.user:
+                # Personal budget - find earliest expense by this user in this category
+                earliest_expense = Expense.query.filter_by(
+                    category_id=budget.category_id,
+                    created_by=budget.user
+                ).order_by(Expense.expense_date).first()
+            else:
+                # Shared budget - find earliest expense in this category by any user
+                earliest_expense = Expense.query.filter_by(
+                    category_id=budget.category_id
+                ).order_by(Expense.expense_date).first()
+
+            if earliest_expense:
+                # Start from the month of the earliest expense
+                earliest_month = datetime(
+                    earliest_expense.expense_date.year,
+                    earliest_expense.expense_date.month,
+                    1
+                )
+
+                # Create snapshots from earliest month up to (but not including) current month
+                iter_month = earliest_month
+                last_balance = 0  # Start with zero balance
+
+                while iter_month < current_month:
+                    month_str = iter_month.strftime('%Y-%m')
+
+                    # Calculate spending for this month
+                    month_start = iter_month.replace(day=1).date()
+                    next_month = iter_month + relativedelta(months=1)
+                    month_end = next_month.replace(day=1).date()
+
+                    if budget.user:
+                        # Personal budget
+                        month_spent = db.session.query(func.sum(Expense.amount)).filter(
+                            Expense.category_id == budget.category_id,
+                            Expense.created_by == budget.user,
+                            Expense.expense_date >= month_start,
+                            Expense.expense_date < month_end
+                        ).scalar() or 0
+                    else:
+                        # Shared budget
+                        month_spent = db.session.query(func.sum(Expense.amount)).filter(
+                            Expense.category_id == budget.category_id,
+                            Expense.expense_date >= month_start,
+                            Expense.expense_date < month_end
+                        ).scalar() or 0
+
+                    # Calculate carried surplus/deficit
+                    carried_surplus = max(0, last_balance)
+                    carried_deficit = max(0, -last_balance)
+
+                    # Create snapshot
+                    snapshot = MonthlyBudgetSnapshot(
+                        category_id=budget.category_id,
+                        user=budget.user,
+                        month=month_str,
+                        monthly_amount=budget.monthly_amount,
+                        carried_surplus=carried_surplus,
+                        carried_deficit=carried_deficit,
+                        actual_spent=month_spent
+                    )
+                    db.session.add(snapshot)
+
+                    # Calculate ending balance for next month
+                    last_balance = last_balance + budget.monthly_amount - month_spent
+
+                    iter_month = next_month
 
     db.session.commit()
 
