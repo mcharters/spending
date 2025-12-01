@@ -135,6 +135,62 @@ def seed_budgets_command():
         else:
             print("Budgets already exist, skipping seed")
 
+@app.cli.command('show-recent')
+def show_recent_command():
+    """Show the 10 most recent rows from each database table."""
+    with app.app_context():
+        print("\n" + "="*80)
+        print("EXPENSES (10 most recent)")
+        print("="*80)
+        expenses = Expense.query.order_by(Expense.created_at.desc()).limit(10).all()
+        if expenses:
+            print(f"{'ID':<5} {'Amount':<10} {'Category':<15} {'User':<10} {'Expense Date':<15} {'Created At':<20}")
+            print("-"*80)
+            for exp in expenses:
+                print(f"{exp.id:<5} ${exp.amount:<9.2f} {exp.category.name:<15} {exp.created_by:<10} {exp.expense_date.strftime('%Y-%m-%d'):<15} {exp.created_at.strftime('%Y-%m-%d %H:%M'):<20}")
+        else:
+            print("No expenses found")
+
+        print("\n" + "="*80)
+        print("CATEGORIES")
+        print("="*80)
+        categories = Category.query.order_by(Category.id.desc()).limit(10).all()
+        if categories:
+            print(f"{'ID':<5} {'Name':<20} {'Parent Type':<15}")
+            print("-"*80)
+            for cat in categories:
+                print(f"{cat.id:<5} {cat.name:<20} {cat.parent_type:<15}")
+        else:
+            print("No categories found")
+
+        print("\n" + "="*80)
+        print("BUDGETS")
+        print("="*80)
+        budgets = Budget.query.order_by(Budget.id.desc()).limit(10).all()
+        if budgets:
+            print(f"{'ID':<5} {'Category':<15} {'User':<10} {'Monthly Amount':<15}")
+            print("-"*80)
+            for budget in budgets:
+                user_str = budget.user if budget.user else "(Shared)"
+                print(f"{budget.id:<5} {budget.category.name:<15} {user_str:<10} ${budget.monthly_amount:<14.2f}")
+        else:
+            print("No budgets found")
+
+        print("\n" + "="*80)
+        print("MONTHLY BUDGET SNAPSHOTS (10 most recent months)")
+        print("="*80)
+        snapshots = MonthlyBudgetSnapshot.query.order_by(MonthlyBudgetSnapshot.month.desc()).limit(10).all()
+        if snapshots:
+            print(f"{'ID':<5} {'Month':<10} {'Category':<15} {'User':<10} {'Budget':<10} {'Spent':<10}")
+            print("-"*80)
+            for snap in snapshots:
+                user_str = snap.user if snap.user else "(Shared)"
+                print(f"{snap.id:<5} {snap.month:<10} {snap.category.name:<15} {user_str:<10} ${snap.monthly_amount:<9.2f} ${snap.actual_spent:<9.2f}")
+        else:
+            print("No snapshots found")
+
+        print("\n" + "="*80)
+
 # Budget helper functions
 def recalculate_snapshots_from_month(budget, start_month_str):
     """
