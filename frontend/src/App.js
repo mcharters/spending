@@ -86,6 +86,7 @@ function AuthWrapper() {
       <Route path="/" element={<MainView apiUrl={API_URL} getAuthHeader={getAuthHeader} handleLogout={handleLogout} setIsAuthenticated={setIsAuthenticated} />} />
       <Route path="/detail/:parentType" element={<DetailView apiUrl={API_URL} getAuthHeader={getAuthHeader} handleLogout={handleLogout} setIsAuthenticated={setIsAuthenticated} />} />
       <Route path="/expenses/:categoryId" element={<ExpenseListView apiUrl={API_URL} getAuthHeader={getAuthHeader} handleLogout={handleLogout} setIsAuthenticated={setIsAuthenticated} />} />
+      <Route path="/history" element={<ExpenseHistoryView apiUrl={API_URL} getAuthHeader={getAuthHeader} handleLogout={handleLogout} setIsAuthenticated={setIsAuthenticated} />} />
     </Routes>
   );
 }
@@ -388,6 +389,7 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
       </div>
 
       <footer className="footer">
+        <button onClick={() => navigate('/history')} className="history-link-btn">View History</button>
         <button onClick={handleLogout} className="logout-btn">Logout</button>
       </footer>
     </div>
@@ -715,6 +717,118 @@ function ExpenseListView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticat
                 )}
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      <footer className="footer">
+        <button onClick={handleLogout} className="logout-btn">Logout</button>
+      </footer>
+    </div>
+  );
+}
+
+function ExpenseHistoryView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
+  const [monthsData, setMonthsData] = useState([]);
+  const [monthsBack, setMonthsBack] = useState(2);
+  const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
+
+  const API_URL = apiUrl;
+
+  useEffect(() => {
+    fetchExpenseHistory(monthsBack);
+  }, []);
+
+  const fetchExpenseHistory = async (months) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/expenses/history?months_back=${months}`, {
+        headers: getAuthHeader()
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setMonthsData(data.months);
+        setMonthsBack(data.months_back);
+      } else if (response.status === 401) {
+        setIsAuthenticated(false);
+      }
+    } catch (error) {
+      console.error('Error fetching expense history:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLoadMore = () => {
+    const newMonthsBack = monthsBack + 2;
+    fetchExpenseHistory(newMonthsBack);
+  };
+
+  const formatCurrency = (amount) => {
+    return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString + 'T00:00:00');
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  return (
+    <div className="container">
+      <div className="summary-container">
+        <div className="back-button-container">
+          <button onClick={() => navigate('/')} className="back-btn">← Back to Home</button>
+        </div>
+
+        <h2 className="history-title">Expense History</h2>
+
+        {monthsData.length === 0 && !isLoading ? (
+          <p className="no-expenses">No expenses found.</p>
+        ) : (
+          <div className="history-container">
+            {monthsData.map(monthData => (
+              <div key={monthData.month} className="history-month">
+                <div className="history-month-header">
+                  <h3>{monthData.month_display}</h3>
+                  <span className="history-month-total">${formatCurrency(monthData.total)}</span>
+                </div>
+                <div className="history-expense-list">
+                  {monthData.expenses.map(expense => (
+                    <div key={expense.id} className="history-expense-item">
+                      <div className="history-expense-date">{formatDate(expense.expense_date)}</div>
+                      <div className="history-expense-details">
+                        <div className="history-expense-category">
+                          {expense.category}
+                          <span className="history-expense-type"> ({expense.parent_type})</span>
+                        </div>
+                        {expense.description && (
+                          <div className="history-expense-description">{expense.description}</div>
+                        )}
+                        <div className="history-expense-meta">
+                          <span className="expense-user">by {expense.created_by}</span>
+                        </div>
+                      </div>
+                      <div className="history-expense-amount">${formatCurrency(expense.amount)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!isLoading && monthsData.length > 0 && (
+          <div className="load-more-container">
+            <button onClick={handleLoadMore} className="load-more-btn">
+              Load More Months
+            </button>
+          </div>
+        )}
+
+        {isLoading && (
+          <div className="loading-indicator">
+            <p>Loading...</p>
           </div>
         )}
       </div>

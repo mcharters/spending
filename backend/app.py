@@ -847,6 +847,56 @@ def delete_expense(expense_id):
 
     return jsonify({'message': 'Expense deleted successfully'}), 200
 
+@app.route('/api/expenses/history', methods=['GET'])
+@auth.login_required
+def get_expense_history():
+    """Get expense history grouped by month for the authenticated user.
+
+    Query Parameters:
+        months_back (optional): Number of months to fetch (default: 2)
+    """
+    from datetime import datetime
+    from dateutil.relativedelta import relativedelta
+    from flask import request
+
+    username = auth.current_user()
+    months_back = int(request.args.get('months_back', 2))
+
+    # Calculate the date range
+    current_date = datetime.utcnow()
+    start_month = current_date - relativedelta(months=months_back - 1)
+    start_date = start_month.replace(day=1).date()
+
+    # Get expenses for current user (Personal) or Shared categories
+    expenses = Expense.query.join(Category).filter(
+        (Expense.created_by == username) | (Category.parent_type == 'Shared'),
+        Expense.expense_date >= start_date
+    ).order_by(Expense.expense_date.desc()).all()
+
+    # Group expenses by month
+    expenses_by_month = {}
+    for expense in expenses:
+        month_key = expense.expense_date.strftime('%Y-%m')
+        if month_key not in expenses_by_month:
+            expenses_by_month[month_key] = []
+        expenses_by_month[month_key].append(expense.to_dict())
+
+    # Convert to sorted list of months (most recent first)
+    months_data = []
+    for month_key in sorted(expenses_by_month.keys(), reverse=True):
+        month_date = datetime.strptime(month_key, '%Y-%m')
+        months_data.append({
+            'month': month_key,
+            'month_display': month_date.strftime('%B %Y'),
+            'expenses': expenses_by_month[month_key],
+            'total': sum(e['amount'] for e in expenses_by_month[month_key])
+        })
+
+    return jsonify({
+        'months': months_data,
+        'months_back': months_back
+    })
+
 @app.route('/api/categories', methods=['GET'])
 @auth.login_required
 def get_categories():

@@ -575,3 +575,149 @@ button:hover {
   min-width: 180px;
   text-align: center;
 }
+
+/* History Page Styles */
+.history-title {
+  text-align: center;
+  color: #333;
+  margin-bottom: 25px;
+  font-size: 1.8rem;
+}
+
+.history-container {
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+}
+
+.history-month {
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e0e0e0;
+}
+
+.history-month-header {
+  background: #4CAF50;
+  color: white;
+  padding: 15px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.history-month-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: white;
+}
+
+.history-month-total {
+  font-size: 1.4rem;
+  font-weight: bold;
+}
+
+.history-expense-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.history-expense-item {
+  padding: 16px 20px;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  transition: background-color 0.2s;
+}
+
+.history-expense-item:last-child {
+  border-bottom: none;
+}
+
+.history-expense-item:hover {
+  background-color: #f9f9f9;
+}
+
+.history-expense-date {
+  font-size: 0.85rem;
+  color: #666;
+  font-weight: 500;
+  min-width: 90px;
+  white-space: nowrap;
+}
+
+.history-expense-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-expense-category {
+  font-size: 1rem;
+  color: #333;
+  font-weight: 600;
+}
+
+.history-expense-type {
+  font-size: 0.85rem;
+  color: #666;
+  font-weight: 400;
+}
+
+.history-expense-description {
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.history-expense-meta {
+  font-size: 0.85rem;
+  color: #888;
+}
+
+.history-expense-amount {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #333;
+  white-space: nowrap;
+  min-width: 80px;
+  text-align: right;
+}
+
+.load-more-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 25px;
+}
+
+.load-more-btn {
+  background-color: #2196F3;
+  padding: 12px 32px;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.load-more-btn:hover {
+  background-color: #1976D2;
+}
+
+.loading-indicator {
+  text-align: center;
+  padding: 30px;
+  color: #666;
+  font-style: italic;
+}
+
+.history-link-btn {
+  background-color: #2196F3;
+  padding: 10px 24px;
+  font-size: 14px;
+  margin-right: 10px;
+}
+
+.history-link-btn:hover {
+  background-color: #1976D2;
+}
