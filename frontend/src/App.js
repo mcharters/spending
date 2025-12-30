@@ -100,7 +100,8 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
   const [formData, setFormData] = useState({
     amount: '',
     category_id: '',
-    expense_date: new Date()
+    expense_date: new Date(),
+    description: ''
   });
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -187,7 +188,7 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
       });
 
       if (response.ok) {
-        setFormData({ ...formData, amount: '', category_id: '' });
+        setFormData({ ...formData, amount: '', category_id: '', description: '' });
         fetchBudgets();
       } else if (response.status === 401) {
         setIsAuthenticated(false);
@@ -325,6 +326,14 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
             value={formData.amount}
             onChange={handleChange}
             required
+          />
+          <input
+            type="text"
+            name="description"
+            placeholder="Description (optional)"
+            value={formData.description}
+            onChange={handleChange}
+            maxLength="200"
           />
           <button type="submit">Add Expense</button>
           {errorMessage && <p className="error-message">{errorMessage}</p>}
