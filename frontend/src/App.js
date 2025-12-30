@@ -248,8 +248,6 @@ function MainView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenticated }) {
               selected={formData.expense_date}
               onChange={(date) => {
                 setFormData({ ...formData, expense_date: date });
-                // Update selected month when date changes via calendar
-                setSelectedMonth(new Date(date.getFullYear(), date.getMonth(), 1));
               }}
               dateFormat="MMMM d, yyyy"
               inline
