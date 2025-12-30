@@ -897,6 +897,199 @@ def get_expense_history():
         'months_back': months_back
     })
 
+@app.route('/api/expenses/parse-csv', methods=['POST'])
+@auth.login_required
+def parse_csv_expenses():
+    """Parse a CSV file from a bank statement and return potential expenses.
+
+    Accepts CSV files in two formats:
+    1. "YYYY-MM-DD","description","money_out","money_in","balance"
+    2. MM/DD/YYYY,description,money_out,money_in,balance
+
+    Returns a list of parsed expenses (money_out only) for user validation.
+    Does not create expenses in the database yet.
+    """
+    from flask import request
+    from datetime import datetime
+    import csv
+    import io
+
+    # Check if file was uploaded
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    file = request.files['file']
+
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+
+    if not file.filename.endswith('.csv'):
+        return jsonify({'error': 'File must be a CSV'}), 400
+
+    try:
+        # Read file content
+        content = file.read().decode('utf-8')
+        csv_reader = csv.reader(io.StringIO(content))
+
+        parsed_expenses = []
+        errors = []
+        line_number = 0
+
+        for row in csv_reader:
+            line_number += 1
+
+            # Skip empty rows
+            if not row or len(row) < 5:
+                continue
+
+            try:
+                date_str = row[0].strip().strip('"')
+                description = row[1].strip().strip('"')
+                money_out = row[2].strip().strip('"')
+                # money_in = row[3] - not used, we only process money_out transactions
+
+                # Skip "money in" transactions (ignore deposits)
+                if not money_out or money_out == '':
+                    continue
+
+                # Parse the date - try both formats
+                expense_date = None
+
+                # Try format 1: "YYYY-MM-DD"
+                try:
+                    expense_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    pass
+
+                # Try format 2: "MM/DD/YYYY"
+                if not expense_date:
+                    try:
+                        expense_date = datetime.strptime(date_str, '%m/%d/%Y').date()
+                    except ValueError:
+                        pass
+
+                if not expense_date:
+                    errors.append({
+                        'line': line_number,
+                        'error': f'Invalid date format: {date_str}',
+                        'row': row
+                    })
+                    continue
+
+                # Parse amount
+                try:
+                    amount = float(money_out)
+                except ValueError:
+                    errors.append({
+                        'line': line_number,
+                        'error': f'Invalid amount: {money_out}',
+                        'row': row
+                    })
+                    continue
+
+                # Add to parsed expenses
+                parsed_expenses.append({
+                    'date': expense_date.isoformat(),
+                    'description': description,
+                    'amount': amount,
+                    'line': line_number
+                })
+
+            except Exception as e:
+                errors.append({
+                    'line': line_number,
+                    'error': str(e),
+                    'row': row
+                })
+
+        return jsonify({
+            'expenses': parsed_expenses,
+            'errors': errors,
+            'total_parsed': len(parsed_expenses),
+            'total_errors': len(errors)
+        })
+
+    except Exception as e:
+        return jsonify({'error': f'Failed to parse CSV: {str(e)}'}), 400
+
+@app.route('/api/expenses/save-csv-expense', methods=['POST'])
+@auth.login_required
+def save_csv_expense():
+    """Save a single validated expense from CSV import.
+
+    This endpoint is used after CSV parsing to save individual expenses
+    that the user has validated and assigned categories to.
+    """
+    from flask import request
+    from datetime import datetime
+
+    data = request.get_json()
+    username = auth.current_user()
+
+    # Validate required fields
+    if not data.get('date'):
+        return jsonify({'error': 'Date is required'}), 400
+    if not data.get('amount'):
+        return jsonify({'error': 'Amount is required'}), 400
+    if not data.get('category_id'):
+        return jsonify({'error': 'Category is required'}), 400
+
+    # Parse the date
+    try:
+        expense_date = datetime.fromisoformat(data['date']).date()
+    except ValueError:
+        return jsonify({'error': 'Invalid date format'}), 400
+
+    # Validate category and budget (same logic as regular expense creation)
+    expense_month = expense_date.strftime('%Y-%m')
+    current_month = datetime.utcnow().strftime('%Y-%m')
+    category_id = data.get('category_id')
+
+    category = Category.query.get(category_id)
+    if not category:
+        return jsonify({'error': 'Category not found'}), 404
+
+    # Find the budget for this category
+    if category.parent_type == 'Personal':
+        budget = Budget.query.filter_by(
+            category_id=category_id,
+            user=username
+        ).first()
+    else:
+        budget = Budget.query.filter_by(
+            category_id=category_id,
+            user=None
+        ).first()
+
+    if not budget:
+        return jsonify({
+            'error': f'No budget exists for this category.'
+        }), 400
+
+    # Create the expense
+    expense = Expense(
+        description=data.get('description', ''),
+        amount=float(data.get('amount')),
+        category_id=category_id,
+        created_by=username,
+        expense_date=expense_date
+    )
+    db.session.add(expense)
+    db.session.commit()
+
+    # If expense is in a past month, recalculate snapshots
+    if expense_month < current_month:
+        snapshot = MonthlyBudgetSnapshot.query.filter_by(
+            category_id=category_id,
+            user=budget.user,
+            month=expense_month
+        ).first()
+
+        if snapshot:
+            recalculate_snapshots_from_month(budget, expense_month)
+
+    return jsonify(expense.to_dict()), 201
+
 @app.route('/api/categories', methods=['GET'])
 @auth.login_required
 def get_categories():

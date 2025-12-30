@@ -739,12 +739,17 @@ function ExpenseHistoryView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenti
   const [monthsData, setMonthsData] = useState([]);
   const [monthsBack, setMonthsBack] = useState(2);
   const [isLoading, setIsLoading] = useState(false);
+  const [potentialExpenses, setPotentialExpenses] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [uploadError, setUploadError] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
   const navigate = useNavigate();
 
   const API_URL = apiUrl;
 
   useEffect(() => {
     fetchExpenseHistory(monthsBack);
+    fetchCategories();
   }, []);
 
   const fetchExpenseHistory = async (months) => {
@@ -767,6 +772,117 @@ function ExpenseHistoryView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenti
     }
   };
 
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch(`${API_URL}/categories`, {
+        headers: getAuthHeader()
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCategories(data);
+      } else if (response.status === 401) {
+        setIsAuthenticated(false);
+      }
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setUploadError('');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch(`${API_URL}/expenses/parse-csv`, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: formData
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+
+        // Add category_id field to each expense (initially empty)
+        const expensesWithCategory = data.expenses.map((exp, index) => ({
+          ...exp,
+          category_id: '',
+          tempId: `temp-${Date.now()}-${index}` // Unique ID for React keys
+        }));
+
+        setPotentialExpenses(expensesWithCategory);
+
+        if (data.errors.length > 0) {
+          setUploadError(`Parsed ${data.total_parsed} expenses with ${data.total_errors} errors`);
+        }
+      } else if (response.status === 401) {
+        setIsAuthenticated(false);
+      } else {
+        const errorData = await response.json();
+        setUploadError(errorData.error || 'Failed to parse CSV');
+      }
+    } catch (error) {
+      console.error('Error uploading CSV:', error);
+      setUploadError('Error connecting to server');
+    } finally {
+      setIsUploading(false);
+      event.target.value = ''; // Reset file input
+    }
+  };
+
+  const handleCategoryChange = (tempId, categoryId) => {
+    setPotentialExpenses(potentialExpenses.map(exp =>
+      exp.tempId === tempId ? { ...exp, category_id: categoryId } : exp
+    ));
+  };
+
+  const handleSaveExpense = async (expense) => {
+    if (!expense.category_id) {
+      alert('Please select a category before saving');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/expenses/save-csv-expense`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeader()
+        },
+        body: JSON.stringify({
+          date: expense.date,
+          description: expense.description,
+          amount: expense.amount,
+          category_id: parseInt(expense.category_id)
+        })
+      });
+
+      if (response.ok) {
+        // Remove from potential expenses
+        setPotentialExpenses(potentialExpenses.filter(exp => exp.tempId !== expense.tempId));
+        // Refresh the expense history to show the newly saved expense
+        fetchExpenseHistory(monthsBack);
+      } else if (response.status === 401) {
+        setIsAuthenticated(false);
+      } else {
+        const errorData = await response.json();
+        alert(errorData.error || 'Failed to save expense');
+      }
+    } catch (error) {
+      console.error('Error saving expense:', error);
+      alert('Error connecting to server');
+    }
+  };
+
+  const handleDismissExpense = (tempId) => {
+    setPotentialExpenses(potentialExpenses.filter(exp => exp.tempId !== tempId));
+  };
+
   const handleLoadMore = () => {
     const newMonthsBack = monthsBack + 2;
     fetchExpenseHistory(newMonthsBack);
@@ -781,6 +897,60 @@ function ExpenseHistoryView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenti
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
+  // Merge potential expenses with existing expenses and sort by date
+  const getMergedExpenses = () => {
+    const allExpenses = [];
+
+    // Add existing expenses
+    monthsData.forEach(monthData => {
+      monthData.expenses.forEach(expense => {
+        allExpenses.push({
+          ...expense,
+          isPotential: false,
+          sortDate: expense.expense_date
+        });
+      });
+    });
+
+    // Add potential expenses
+    potentialExpenses.forEach(expense => {
+      allExpenses.push({
+        ...expense,
+        isPotential: true,
+        sortDate: expense.date
+      });
+    });
+
+    // Sort by date descending
+    allExpenses.sort((a, b) => {
+      return new Date(b.sortDate) - new Date(a.sortDate);
+    });
+
+    // Group by month
+    const groupedByMonth = {};
+    allExpenses.forEach(expense => {
+      const monthKey = expense.sortDate.substring(0, 7); // YYYY-MM
+      if (!groupedByMonth[monthKey]) {
+        groupedByMonth[monthKey] = [];
+      }
+      groupedByMonth[monthKey].push(expense);
+    });
+
+    // Convert to sorted array
+    return Object.keys(groupedByMonth)
+      .sort((a, b) => b.localeCompare(a))
+      .map(monthKey => {
+        const date = new Date(monthKey + '-01');
+        return {
+          month: monthKey,
+          month_display: date.toLocaleString('default', { month: 'long', year: 'numeric' }),
+          expenses: groupedByMonth[monthKey]
+        };
+      });
+  };
+
+  const mergedMonthsData = potentialExpenses.length > 0 ? getMergedExpenses() : monthsData;
+
   return (
     <div className="container">
       <div className="summary-container">
@@ -790,35 +960,118 @@ function ExpenseHistoryView({ apiUrl, getAuthHeader, handleLogout, setIsAuthenti
 
         <h2 className="history-title">Expense History</h2>
 
-        {monthsData.length === 0 && !isLoading ? (
+        {/* CSV Upload Section */}
+        <div className="csv-upload-container">
+          <label htmlFor="csv-upload" className="csv-upload-btn">
+            {isUploading ? 'Uploading...' : 'Upload Bank Statement CSV'}
+          </label>
+          <input
+            id="csv-upload"
+            type="file"
+            accept=".csv"
+            onChange={handleFileUpload}
+            disabled={isUploading}
+            style={{ display: 'none' }}
+          />
+          {uploadError && <p className="upload-error">{uploadError}</p>}
+          {potentialExpenses.length > 0 && (
+            <p className="upload-success">
+              {potentialExpenses.length} potential expense{potentialExpenses.length !== 1 ? 's' : ''} loaded.
+              Review and save below.
+            </p>
+          )}
+        </div>
+
+        {mergedMonthsData.length === 0 && !isLoading ? (
           <p className="no-expenses">No expenses found.</p>
         ) : (
           <div className="history-container">
-            {monthsData.map(monthData => (
+            {mergedMonthsData.map(monthData => (
               <div key={monthData.month} className="history-month">
                 <div className="history-month-header">
                   <h3>{monthData.month_display}</h3>
-                  <span className="history-month-total">${formatCurrency(monthData.total)}</span>
+                  <span className="history-month-total">
+                    ${formatCurrency(
+                      monthData.expenses
+                        .filter(exp => !exp.isPotential)
+                        .reduce((sum, exp) => sum + exp.amount, 0)
+                    )}
+                  </span>
                 </div>
                 <div className="history-expense-list">
-                  {monthData.expenses.map(expense => (
-                    <div key={expense.id} className="history-expense-item">
-                      <div className="history-expense-date">{formatDate(expense.expense_date)}</div>
-                      <div className="history-expense-details">
-                        <div className="history-expense-category">
-                          {expense.category}
-                          <span className="history-expense-type"> ({expense.parent_type})</span>
-                        </div>
-                        {expense.description && (
+                  {monthData.expenses.map(expense =>
+                    expense.isPotential ? (
+                      // Potential expense from CSV
+                      <div key={expense.tempId} className="history-expense-item potential-expense">
+                        <div className="potential-badge">NEW</div>
+                        <div className="history-expense-date">{formatDate(expense.date)}</div>
+                        <div className="history-expense-details">
                           <div className="history-expense-description">{expense.description}</div>
-                        )}
-                        <div className="history-expense-meta">
-                          <span className="expense-user">by {expense.created_by}</span>
+                          <div className="category-selector">
+                            <select
+                              value={expense.category_id}
+                              onChange={(e) => handleCategoryChange(expense.tempId, e.target.value)}
+                              className="potential-category-select"
+                            >
+                              <option value="">Select category...</option>
+                              <optgroup label="Personal">
+                                {categories
+                                  .filter(cat => cat.parent_type === 'Personal')
+                                  .map(cat => (
+                                    <option key={cat.id} value={cat.id}>
+                                      {cat.name}
+                                    </option>
+                                  ))}
+                              </optgroup>
+                              <optgroup label="Shared">
+                                {categories
+                                  .filter(cat => cat.parent_type === 'Shared')
+                                  .map(cat => (
+                                    <option key={cat.id} value={cat.id}>
+                                      {cat.name}
+                                    </option>
+                                  ))}
+                              </optgroup>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="history-expense-amount">${formatCurrency(expense.amount)}</div>
+                        <div className="potential-expense-actions">
+                          <button
+                            onClick={() => handleSaveExpense(expense)}
+                            className="save-expense-btn"
+                            disabled={!expense.category_id}
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => handleDismissExpense(expense.tempId)}
+                            className="dismiss-expense-btn"
+                          >
+                            Dismiss
+                          </button>
                         </div>
                       </div>
-                      <div className="history-expense-amount">${formatCurrency(expense.amount)}</div>
-                    </div>
-                  ))}
+                    ) : (
+                      // Regular existing expense
+                      <div key={expense.id} className="history-expense-item">
+                        <div className="history-expense-date">{formatDate(expense.expense_date)}</div>
+                        <div className="history-expense-details">
+                          <div className="history-expense-category">
+                            {expense.category}
+                            <span className="history-expense-type"> ({expense.parent_type})</span>
+                          </div>
+                          {expense.description && (
+                            <div className="history-expense-description">{expense.description}</div>
+                          )}
+                          <div className="history-expense-meta">
+                            <span className="expense-user">by {expense.created_by}</span>
+                          </div>
+                        </div>
+                        <div className="history-expense-amount">${formatCurrency(expense.amount)}</div>
+                      </div>
+                    )
+                  )}
                 </div>
               </div>
             ))}
